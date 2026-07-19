@@ -13,7 +13,19 @@ import { spawnSync } from 'node:child_process';
 export function curl(url, outFile) {
   const r = spawnSync(
     'curl',
-    ['-fSL', '--retry', '10', '--retry-delay', '3', '--retry-all-errors', '-C', '-', '-o', outFile, url],
+    [
+      '-fSL',
+      '--retry',
+      '10',
+      '--retry-delay',
+      '3',
+      '--retry-all-errors',
+      '-C',
+      '-',
+      '-o',
+      outFile,
+      url,
+    ],
     { stdio: 'inherit' },
   );
   if (r.status !== 0) throw new Error(`curl failed for ${url} (exit ${r.status})`);

@@ -1,9 +1,4 @@
-import {
-  getAssetInfo,
-  listAssets,
-  listFamilies,
-  resolveAssetUrl,
-} from '@playground/vendor-assets';
+import { getAssetInfo, listAssets, listFamilies, resolveAssetUrl } from '@playground/vendor-assets';
 import { expect, test } from 'vitest';
 
 test('listFamilies returns registered families', () => {

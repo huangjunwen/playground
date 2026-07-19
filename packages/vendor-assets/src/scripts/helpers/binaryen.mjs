@@ -16,16 +16,23 @@ const BINARYEN_BASE = 'https://github.com/WebAssembly/binaryen/releases/download
 function binaryenAsset(version) {
   const { platform, arch } = process;
   const os =
-    platform === 'linux' ? 'linux'
-    : platform === 'darwin' ? 'macos'
-    : platform === 'win32' ? 'windows'
-    : null;
+    platform === 'linux'
+      ? 'linux'
+      : platform === 'darwin'
+        ? 'macos'
+        : platform === 'win32'
+          ? 'windows'
+          : null;
   if (!os) throw new Error(`unsupported platform: ${platform}`);
   // linux arm64 = "aarch64"; macos/windows arm64 = "arm64"; x64 = "x86_64".
   const cpu =
-    arch === 'x64' ? 'x86_64'
-    : arch === 'arm64' ? (platform === 'linux' ? 'aarch64' : 'arm64')
-    : null;
+    arch === 'x64'
+      ? 'x86_64'
+      : arch === 'arm64'
+        ? platform === 'linux'
+          ? 'aarch64'
+          : 'arm64'
+        : null;
   if (!cpu) throw new Error(`unsupported arch: ${arch}`);
   return `binaryen-${version}-${cpu}-${os}.tar.gz`;
 }

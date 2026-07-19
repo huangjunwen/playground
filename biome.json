@@ -2,11 +2,16 @@
   "$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
   "files": {
     "includes": [
-      "**/apps/**/*/src/**/*.ts",
-      "**/apps/**/*/tests/**/*.ts",
-      "**/packages/**/*/src/**/*.ts",
-      "**/packages/**/*/tests/**/*.ts",
+      "**/apps/*/src/**/*.ts",
+      "**/apps/*/src/**/*.mjs",
+      "**/apps/*/tests/**/*.ts",
+      "**/apps/*/tests/**/*.mjs",
+      "**/packages/*/src/**/*.ts",
+      "**/packages/*/src/**/*.mjs",
+      "**/packages/*/tests/**/*.ts",
+      "**/packages/*/tests/**/*.mjs",
       "**/tests/**/*.ts",
+      "**/tests/**/*.mjs",
       "!**/dist",
       "!**/node_modules",
       "!**/vendor"
@@ -30,6 +35,7 @@
       "nursery": {},
       "style": {
         "noNegationElse": "error",
+        "noNonNullAssertion": "off",
         "useBlockStatements": "off",
         "useShorthandAssign": "error",
         "noExportedImports": "error",
