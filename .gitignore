@@ -4,3 +4,6 @@ dist/
 *.log
 .vite/
 **/__screenshots__/
+
+# vendored assets are large and reproducibly fetched; keep them out of git.
+packages/vendor-assets/vendor/**
