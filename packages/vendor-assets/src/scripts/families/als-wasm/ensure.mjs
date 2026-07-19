@@ -5,12 +5,17 @@
 // handles SHA-256 calculation and assets.json recording.
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { curl } from '../../helpers/curl.mjs';
 import { ensureBinaryen, runWasmOpt } from '../../helpers/binaryen.mjs';
+import { curl } from '../../helpers/curl.mjs';
 
 /** @param {string} p */
 async function fileExists(p) {
-  try { await stat(p); return true; } catch { return false; }
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -32,21 +37,21 @@ export async function ensureVersion(params, { outDir }) {
   const optPath = resolve(outDir, optFile);
 
   // 1. Ensure raw file exists.
-  if (!(await fileExists(rawPath))) {
+  if (await fileExists(rawPath)) {
+    console.log(`raw wasm already present: ${rawFile}`);
+  } else {
     console.log(`downloading raw wasm: ${url}`);
     curl(url, rawPath);
-  } else {
-    console.log(`raw wasm already present: ${rawFile}`);
   }
 
   // 2. Ensure opt file exists.
-  if (!(await fileExists(optPath))) {
+  if (await fileExists(optPath)) {
+    console.log(`opt wasm already present: ${optFile}`);
+  } else {
     console.log(`ensuring binaryen ${binaryenVersion}...`);
     const wasmOpt = await ensureBinaryen(resolve(outDir, '..', '..', '.binaryen'), binaryenVersion);
     console.log(`optimizing: wasm-opt -Oz`);
     runWasmOpt(wasmOpt, '-Oz', rawPath, optPath);
-  } else {
-    console.log(`opt wasm already present: ${optFile}`);
   }
 
   console.log(`OK: built 2 assets`);

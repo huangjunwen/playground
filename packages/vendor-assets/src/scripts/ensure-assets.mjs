@@ -10,12 +10,12 @@
 //   node src/scripts/ensure-assets.mjs --family als-wasm --version v6     # fully specific
 //   node src/scripts/ensure-assets.mjs --family als-wasm --all             # every version
 //   node src/scripts/ensure-assets.mjs --all                               # every family × every version
-import { readFile, readdir, writeFile, mkdir, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256File } from './helpers/sha.mjs';
 
-const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+const mb = bytes => `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, '../..');
@@ -28,11 +28,13 @@ const args = process.argv.slice(2);
 const all = args.includes('--all');
 const familyIdx = args.indexOf('--family');
 const versionIdx = args.indexOf('--version');
-const family = familyIdx !== -1 ? args[familyIdx + 1] : null;
-const version = versionIdx !== -1 ? args[versionIdx + 1] : null;
+const family = familyIdx === -1 ? null : args[familyIdx + 1];
+const version = versionIdx === -1 ? null : args[versionIdx + 1];
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  console.log(`usage: node src/scripts/ensure-assets.mjs [--family <name> [--version <v> | --all]] | --all`);
+  console.log(
+    `usage: node src/scripts/ensure-assets.mjs [--family <name> [--version <v> | --all]] | --all`,
+  );
   process.exit(0);
 }
 
@@ -40,7 +42,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 async function listFamilyDirs() {
   const entries = await readdir(familiesDir, { withFileTypes: true });
-  return entries.filter((d) => d.isDirectory()).map((d) => d.name);
+  return entries.filter(d => d.isDirectory()).map(d => d.name);
 }
 
 async function readParams(family) {
@@ -57,7 +59,7 @@ async function readAssets(family) {
 
 async function writeAssets(family, assets) {
   const path = resolve(familiesDir, family, 'assets.json');
-  await writeFile(path, JSON.stringify(assets, null, 2) + '\n', 'utf8');
+  await writeFile(path, `${JSON.stringify(assets, null, 2)}\n`, 'utf8');
 }
 
 // ---- pair selection -------------------------------------------------------
@@ -82,7 +84,9 @@ async function selectPairs() {
   const p = await readParams(family);
   if (version) {
     if (!p.versions[version]) {
-      throw new Error(`unknown version: ${family}@${version}. Known: ${Object.keys(p.versions).join(', ')}.`);
+      throw new Error(
+        `unknown version: ${family}@${version}. Known: ${Object.keys(p.versions).join(', ')}.`,
+      );
     }
     return [[family, version]];
   }
@@ -132,11 +136,11 @@ for (const [f, v] of pairs) {
     const { size } = await stat(filePath);
 
     if (existing?.sha256) {
-      if (sha !== existing.sha256) {
+      if (sha === existing.sha256) {
+        console.log(`OK   ${assetId}: vendor/${f}/${v}/${desc.filename} (${mb(size)}, ${sha})`);
+      } else {
         console.error(`FAIL ${assetId}: ${sha} != assets.json ${existing.sha256}`);
         errors++;
-      } else {
-        console.log(`OK   ${assetId}: vendor/${f}/${v}/${desc.filename} (${mb(size)}, ${sha})`);
       }
     } else {
       console.log(`NEW  ${assetId}: vendor/${f}/${v}/${desc.filename} (${mb(size)}, ${sha})`);
