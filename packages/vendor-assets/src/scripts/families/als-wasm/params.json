@@ -1,0 +1,10 @@
+{
+  "defaultVersion": "v6",
+  "versions": {
+    "v6": {
+      "url": "https://github.com/agda/agda-language-server/releases/download/v6/als-v6-Agda-2.8.0-wasm.wasm",
+      "agdaVersion": "2.8.0",
+      "binaryenVersion": "version_130"
+    }
+  }
+}
