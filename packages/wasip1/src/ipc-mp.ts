@@ -251,12 +251,25 @@ export function createStreamProvider(transport: Transport): StreamProvider {
   /** Flush all buffered chunks in a single postMessage. Called from a microtask
    *  (for normal writes) or synchronously from close/error (to flush before
    *  the EOF/error marker). */
-  function flush(): void {
+  const flush = (): void => {
+    // Do nothing if no outgoing data
     if (pending.length === 0) return;
     const batch = pending;
     pending = [];
     transport.postMessage(batch, batch);
-  }
+  };
+
+  const onMessage = (e: MessageEvent): void => {
+    const msg = e.data;
+    if (msg && typeof msg === 'object' && (msg as StreamCancel).kind === 'cancel') {
+      closed = true;
+      transport.removeEventListener('message', onMessage as EventListener);
+      provider.onCancel?.((msg as StreamCancel).reason);
+    }
+  };
+  transport.addEventListener('message', onMessage as EventListener);
+  const startable = transport as { start?: () => void };
+  if (startable.start) startable.start();
 
   const provider: StreamProvider = {
     onCancel: undefined,
@@ -281,19 +294,6 @@ export function createStreamProvider(transport: Transport): StreamProvider {
       transport.removeEventListener('message', onMessage as EventListener);
     },
   };
-
-  const onMessage = (e: MessageEvent): void => {
-    const msg = e.data;
-    if (msg && typeof msg === 'object' && (msg as StreamCancel).kind === 'cancel') {
-      closed = true;
-      transport.removeEventListener('message', onMessage as EventListener);
-      provider.onCancel?.((msg as StreamCancel).reason);
-    }
-  };
-  transport.addEventListener('message', onMessage as EventListener);
-  const startable = transport as { start?: () => void };
-  if (startable.start) startable.start();
-
   return provider;
 }
 
@@ -311,46 +311,41 @@ export class CancelledError extends Error {
 // Sends: StreamCancel
 // Receives: ArrayBuffer[] | null(eof) | StreamError
 export function createStreamConsumer(transport: Transport): StreamConsumer {
-  let eof = false;
-  let err: Error | null = null;
-  const queue: ArrayBuffer[] = [];
+  // Delayed: once set, read() still drains chunks buffered before the terminal.
+  let closed = false;
+  // One ordered queue holds chunks (ArrayBuffer), eof (null) and errors
+  // (Error). Terminal markers are sticky — never consumed — so reads after
+  // eof/error keep returning null/throwing rather than parking.
+  let queue: (ArrayBuffer | null | Error)[] = [];
   let pendingReader: {
     resolve: (v: ArrayBuffer | null) => void;
     reject: (e: Error) => void;
   } | null = null;
 
   const pump = (): void => {
-    if (!pendingReader) return;
-    if (queue.length > 0) {
-      const reader = pendingReader;
-      pendingReader = null;
-      reader.resolve(queue.shift()!);
-      return;
-    }
-    if (eof) {
-      const reader = pendingReader;
-      pendingReader = null;
-      reader.resolve(null);
-      return;
-    }
-    if (err) {
-      const reader = pendingReader;
-      pendingReader = null;
-      reader.reject(err);
-      return;
-    }
+    // Do nothing if no reader or no incoming data
+    if (!pendingReader || queue.length === 0) return;
+    const reader = pendingReader;
+    pendingReader = null;
+    const head = queue[0]!;
+    if (head instanceof ArrayBuffer) {
+      queue = queue.slice(1);
+      reader.resolve(head);
+    } else if (head === null) reader.resolve(null);
+    else reader.reject(head);
   };
 
   const onMessage = (e: MessageEvent): void => {
     const msg = e.data;
     if (Array.isArray(msg)) {
-      // Batched delivery from a provider that coalesced multiple writes.
       queue.push(...(msg as ArrayBuffer[]));
     } else if (msg == null) {
-      eof = true;
+      queue.push(null);
+      closed = true;
       transport.removeEventListener('message', onMessage as EventListener);
     } else if (typeof msg === 'object' && (msg as StreamError).kind === 'error') {
-      err = new Error((msg as StreamError).message);
+      queue.push(new Error((msg as StreamError).message));
+      closed = true;
       transport.removeEventListener('message', onMessage as EventListener);
     }
     pump();
@@ -361,17 +356,23 @@ export function createStreamConsumer(transport: Transport): StreamConsumer {
 
   return {
     read() {
-      if (err) throw err;
-      if (eof) return null;
       if (pendingReader) throw new Error('StreamConsumer: only one reader allowed at a time');
-      if (queue.length > 0) return queue.shift()!;
-      return new Promise<ArrayBuffer | null>((resolve, reject) => {
-        pendingReader = { resolve, reject };
-      });
+      if (queue.length === 0)
+        return new Promise<ArrayBuffer | null>((resolve, reject) => {
+          pendingReader = { resolve, reject };
+        });
+      const head = queue[0]!;
+      if (head instanceof ArrayBuffer) {
+        queue = queue.slice(1);
+        return head;
+      }
+      if (head === null) return null;
+      throw head;
     },
     cancel(reason) {
-      if (err || eof) return;
-      err = new CancelledError(reason);
+      if (closed) return;
+      closed = true;
+      queue.push(new CancelledError(reason));
       transport.postMessage({ kind: 'cancel', reason } as StreamCancel);
       transport.removeEventListener('message', onMessage as EventListener);
       pump();
