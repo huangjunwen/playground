@@ -64,6 +64,9 @@ export interface StreamProvider {
 //                      │ when data arrives           │ cancelled: sync throw
 //   cancel()           │ send cancel, → cancelled    │ no-op
 //
+//   Buffered chunks are always drained before eof/error/cancel surfaces,
+//   matching the provider's flush-before-marker ordering.
+//
 export interface StreamConsumer {
   /** Request the next chunk. When data is already available returns it directly
    *  (`ArrayBuffer`); otherwise returns a `Promise` that resolves when data
