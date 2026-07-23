@@ -29,7 +29,18 @@ export interface RpcServer {
 }
 
 // ---- Stream ----
-
+//
+// Implementations should follow these lifecycle & state semantics:
+//
+// StreamProvider:  active ──close()/error()/consumer cancels──▶ closed
+//
+//   Operation\State    │ active                        │ closed
+//   ───────────────────┼───────────────────────────────┼─────────────────
+//   write(chunk)       │ buffer chunk, flush async     │ throw
+//   close()            │ flush + send EOF, → closed    │ no-op
+//   error(msg)         │ flush + send error, → closed  │ no-op
+//   onCancel           │ fired when consumer cancels   │ no-op
+//
 export interface StreamProvider {
   /** Buffer `chunk` for delivery. The implementation may detach (transfer) it on flush. */
   write(chunk: ArrayBuffer): void;
@@ -41,6 +52,18 @@ export interface StreamProvider {
   onCancel?: (reason?: string) => void;
 }
 
+//
+// StreamConsumer:  reading ──EOF──▶ eof
+//                           ├─error──▶ errored
+//                           └─cancel()──▶ cancelled
+//
+//   Operation\State    │ reading                     │ eof / errored / cancelled
+//   ───────────────────┼─────────────────────────────┼─────────────────────────────
+//   read()             │ sync chunk if queued,       │ eof:       sync null
+//                      │ else Promise that resolves  │ errored:   sync throw
+//                      │ when data arrives           │ cancelled: sync throw
+//   cancel()           │ send cancel, → cancelled    │ no-op
+//
 export interface StreamConsumer {
   /** Request the next chunk. When data is already available returns it directly
    *  (`ArrayBuffer`); otherwise returns a `Promise` that resolves when data
@@ -48,8 +71,7 @@ export interface StreamConsumer {
    *
    *  Errors are raised synchronously (throw) when the implementation detects a
    *  failure inline, or asynchronously (Promise rejection) when the error is
-   *  discovered later. Either way the caller uses `await` + try/catch — `await`
-   *  converts a sync throw into a rejection just like a Promise rejection.
+   *  discovered later.
    *
    *  Single-reader: a second `read()` while one is still pending is an error. */
   read(): Promise<ArrayBuffer | null> | ArrayBuffer | null;
@@ -64,6 +86,7 @@ export function toWritableStream(
   provider: StreamProvider,
   strategy?: QueuingStrategy<ArrayBuffer>,
 ): WritableStream<ArrayBuffer> {
+  // see: https://htmlspecs.com/streams/#underlying-sink-api
   let controller!: WritableStreamDefaultController;
   return new WritableStream<ArrayBuffer>(
     {
@@ -72,6 +95,12 @@ export function toWritableStream(
         provider.onCancel = reason =>
           controller.error(new Error(`stream cancelled by consumer${reason ? `: ${reason}` : ''}`));
       },
+      /**
+       > Note that such signals are not always available; compare e.g. 
+       > § 10.6 A writable stream with no backpressure or success signals with 
+       > § 10.7 A writable stream with backpressure and success signals.
+       > In such cases, it’s best to not return anything.
+       */
       write(chunk) {
         provider.write(chunk);
       },
@@ -91,6 +120,7 @@ export function toReadableStream(
   consumer: StreamConsumer,
   strategy?: QueuingStrategy<ArrayBuffer>,
 ): ReadableStream<ArrayBuffer> {
+  // see: https://streams.spec.whatwg.org/#underlying-source-api
   return new ReadableStream<ArrayBuffer>(
     {
       pull(controller) {
