@@ -1,6 +1,6 @@
 // IPC abstractions: an RPC interface (request/response) and a unidirectional
 // byte-stream interface, both transport-agnostic. Any transport that satisfies
-// these interfaces can drive the consumers (e.g. fd-pipe) without change.
+// these interfaces can drive the consumers without change.
 
 // ---- RPC ----
 
@@ -34,16 +34,14 @@ export interface RpcServer {
 //
 // StreamProvider:  active ──close()/error()/consumer cancels──▶ closed
 //
-//   Operation\State    │ active                        │ closed
-//   ───────────────────┼───────────────────────────────┼─────────────────
-//   write(chunk)       │ buffer chunk, flush async     │ throw
-//   close()            │ flush + send EOF, → closed    │ no-op
-//   error(msg)         │ flush + send error, → closed  │ no-op
-//   onCancel           │ fired when consumer cancels   │ no-op
+//   Operation\State    │ active                            │ closed
+//   ───────────────────┼───────────────────────────────────┼─────────────────
+//   write(chunk)       │ buffer chunk, flush async         │ throw
+//   close()            │ flush + send EOF, → closed        │ no-op
+//   error(msg)         │ flush + send error, → closed      │ no-op
+//   onCancel           │ consumer cancels → closed → fired │ impossible
 //
-//   Zero-length chunks are dropped on write: this is a byte stream, so 0 bytes
-//   carries no data and isn't worth a postMessage/queue/read round-trip. EOF is
-//   null, so an empty chunk is never ambiguous with end-of-stream.
+//   Zero-length chunks should be dropped on write
 //
 export interface StreamProvider {
   /** Buffer `chunk` for delivery. The implementation may detach (transfer) it on flush. */
@@ -61,7 +59,7 @@ export interface StreamProvider {
 //                           ├─error──▶ errored
 //                           └─cancel()──▶ cancelled
 //
-//   Operation\State    │ reading                     │ eof / errored / cancelled
+//   Operation\State    │ reading                     │ closed (eof / errored / cancelled)
 //   ───────────────────┼─────────────────────────────┼─────────────────────────────
 //   read()             │ sync chunk if queued,       │ eof:       sync null
 //                      │ else Promise that resolves  │ errored:   sync throw

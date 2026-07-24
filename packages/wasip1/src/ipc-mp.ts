@@ -58,6 +58,14 @@ export function transfer<T extends Transferable>(value: T): Transfer<T> {
 
 // ---- Helpers ----
 
+/** MessagePort.start() / Worker.start() is a no-op in the browser but required
+ *  in Node ≥22 to begin message delivery on a port obtained from a pending
+ *  MessageChannel port2 (worker_threads). Call this after addEventListener. */
+function startTransport(transport: Transport): void {
+  const startable = transport as { start?: () => void };
+  if (startable.start) startable.start();
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   if (v === null || typeof v !== 'object') return false;
   const proto = Object.getPrototypeOf(v);
@@ -144,8 +152,7 @@ export function createRpcClient(
   };
 
   transport.addEventListener('message', onMessage as EventListener);
-  const startable = transport as { start?: () => void };
-  if (startable.start) startable.start();
+  startTransport(transport);
 
   function call<T = unknown>(
     method: string,
@@ -229,8 +236,8 @@ export function createRpcServer(transport: Transport, methods: RpcMethods): RpcS
   };
 
   transport.addEventListener('message', onMessage as EventListener);
-  const startable = transport as { start?: () => void };
-  if (startable.start) startable.start();
+  startTransport(transport);
+
   return {
     dispose() {
       transport.removeEventListener('message', onMessage as EventListener);
@@ -252,7 +259,6 @@ export function createStreamProvider(transport: Transport): StreamProvider {
    *  (for normal writes) or synchronously from close/error (to flush before
    *  the EOF/error marker). */
   const flush = (): void => {
-    // Do nothing if no outgoing data
     if (pending.length === 0) return;
     const batch = pending;
     pending = [];
@@ -268,8 +274,7 @@ export function createStreamProvider(transport: Transport): StreamProvider {
     }
   };
   transport.addEventListener('message', onMessage as EventListener);
-  const startable = transport as { start?: () => void };
-  if (startable.start) startable.start();
+  startTransport(transport);
 
   const provider: StreamProvider = {
     onCancel: undefined,
@@ -277,7 +282,7 @@ export function createStreamProvider(transport: Transport): StreamProvider {
       if (closed) throw new Error('stream provider is closed');
       // Byte-stream semantics: 0 bytes carries no data, so drop it rather than
       // paying a postMessage + queue + read round-trip across the boundary.
-      // (See the StreamProvider note in ipc.ts — null is EOF, never ambiguous.)
+      // (See the StreamProvider note in ipc.ts)
       if (chunk.byteLength === 0) return;
       const wasEmpty = pending.length === 0;
       pending.push(chunk);
@@ -327,7 +332,6 @@ export function createStreamConsumer(transport: Transport): StreamConsumer {
   } | null = null;
 
   const pump = (): void => {
-    // Do nothing if no reader or no incoming data
     if (!pendingReader || queue.length === 0) return;
     const reader = pendingReader;
     pendingReader = null;
@@ -355,8 +359,7 @@ export function createStreamConsumer(transport: Transport): StreamConsumer {
     pump();
   };
   transport.addEventListener('message', onMessage as EventListener);
-  const startable = transport as { start?: () => void };
-  if (startable.start) startable.start();
+  startTransport(transport);
 
   return {
     read() {
