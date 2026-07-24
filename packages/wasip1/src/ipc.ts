@@ -41,6 +41,10 @@ export interface RpcServer {
 //   error(msg)         │ flush + send error, → closed  │ no-op
 //   onCancel           │ fired when consumer cancels   │ no-op
 //
+//   Zero-length chunks are dropped on write: this is a byte stream, so 0 bytes
+//   carries no data and isn't worth a postMessage/queue/read round-trip. EOF is
+//   null, so an empty chunk is never ambiguous with end-of-stream.
+//
 export interface StreamProvider {
   /** Buffer `chunk` for delivery. The implementation may detach (transfer) it on flush. */
   write(chunk: ArrayBuffer): void;

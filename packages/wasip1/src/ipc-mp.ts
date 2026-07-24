@@ -275,6 +275,10 @@ export function createStreamProvider(transport: Transport): StreamProvider {
     onCancel: undefined,
     write(chunk) {
       if (closed) throw new Error('stream provider is closed');
+      // Byte-stream semantics: 0 bytes carries no data, so drop it rather than
+      // paying a postMessage + queue + read round-trip across the boundary.
+      // (See the StreamProvider note in ipc.ts — null is EOF, never ambiguous.)
+      if (chunk.byteLength === 0) return;
       const wasEmpty = pending.length === 0;
       pending.push(chunk);
       if (wasEmpty) queueMicrotask(flush);
