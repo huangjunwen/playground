@@ -36,7 +36,15 @@ export type OpenResult =
   | { kind: 'file'; backend: FileBackend }
   | { kind: 'dir'; backend: DirBackend };
 
-/** Flags influencing open semantics (WASI oflags). */
+/** Open-time flags (WASI `oflags`). Consumed once by `Vfs.open` and not kept
+ *  as fd state — they govern the open *operation* (create / require dir /
+ *  require novelty / truncate), not the resulting fd's runtime behavior.
+ *
+ *  The per-fd, mutable runtime flags (`fdflags`: APPEND/NONBLOCK/DSYNC/RSYNC/
+ *  SYNC) are a separate type, settable at open AND afterward — see
+ *  `Fd.setFlags`. WASI splits the two so the mutable set is its own type
+ *  (POSIX crams both into one `open(flags)` int); both are still settable
+ *  atomically at `path_open`. */
 export interface OpenFlags {
   /** true: create the target if missing (kind chosen by `directory`).
    *  false: missing target throws ENOENT. */
