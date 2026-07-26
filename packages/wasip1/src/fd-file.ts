@@ -1,5 +1,5 @@
-import { Filetype, Result, Whence } from './consts';
-import { Fd, type ReadResult, type SeekResult, type WriteResult } from './fd';
+import { FdFlags, Filetype, Result, Whence } from './consts';
+import { Fd, type ReadResult, type SeekResult, type TruncateResult, type WriteResult } from './fd';
 import type { FileBackend } from './fs';
 import type { IovecValue } from './struct';
 
@@ -7,7 +7,6 @@ export class FileFd extends Fd {
   readonly filetype = Filetype.REGULAR_FILE;
 
   private cursor = 0;
-  private nb = false;
 
   constructor(private readonly backend: FileBackend) {
     super();
@@ -31,17 +30,21 @@ export class FileFd extends Fd {
   }
 
   write(mem: Uint8Array, iovs: IovecValue[]): WriteResult {
+    // O_APPEND (FdFlags.APPEND): each fd_write lands at current EOF, ignoring
+    // the cursor — matches POSIX O_APPEND. The whole gather is one contiguous
+    // append starting at EOF.
+    const start = this.hasFlag(FdFlags.APPEND) ? this.backend.getSize() : this.cursor;
     let n = 0;
     for (const { buf, len } of iovs) {
       if (len === 0) continue;
       try {
-        this.backend.write(this.cursor + n, mem.subarray(buf, buf + len));
+        this.backend.write(start + n, mem.subarray(buf, buf + len));
       } catch {
         return { ok: false, errno: Result.EIO };
       }
       n += len;
     }
-    this.cursor += n;
+    this.cursor = start + n;
     return { ok: true, n };
   }
 
@@ -61,6 +64,9 @@ export class FileFd extends Fd {
     return { ok: true, n };
   }
 
+  // pwrite writes at the explicit `offset` and ignores O_APPEND — matching the
+  // traditional POSIX pwrite contract (offset semantics win; the cursor is
+  // untouched).
   pwrite(mem: Uint8Array, iovs: IovecValue[], offset: number): WriteResult {
     let n = 0;
     for (const { buf, len } of iovs) {
@@ -75,8 +81,9 @@ export class FileFd extends Fd {
     return { ok: true, n };
   }
 
-  truncate(size: number): void {
+  truncate(size: number): TruncateResult {
     this.backend.setSize(size);
+    return { ok: true };
   }
 
   seek(offset: number, whence: number): SeekResult {
@@ -95,8 +102,8 @@ export class FileFd extends Fd {
     return { ok: true, cursor: newCursor };
   }
 
-  tell(): number {
-    return this.cursor;
+  tell(): SeekResult {
+    return { ok: true, cursor: this.cursor };
   }
 
   isReady(_type: number): boolean {
@@ -109,14 +116,6 @@ export class FileFd extends Fd {
 
   statSize(): number {
     return this.backend.getSize();
-  }
-
-  setNonblocking(nb: boolean): void {
-    this.nb = nb;
-  }
-
-  getNonblocking(): boolean {
-    return this.nb;
   }
 
   close(): void {

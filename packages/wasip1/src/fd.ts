@@ -1,14 +1,14 @@
 // WASI file descriptor abstraction. Fd is a vtable of safe defaults: every
 // operation throws UnsupportedError unless a subclass overrides it, so a concrete
-// fd (file, pipe, ...) implements only the operations it supports.
+// fd implements only the operations it supports.
 //
 // Sync-vs-async policy:
-// - read/write/pread/pwrite return a union. Sync fds (files) return a bare
-//   result; async fds (pipes) return a Promise — sync returns skip suspension.
-// - seek/tell/statSize/readdir/etc. are always sync — they touch only cursor
-//   state or in-memory snapshots.
-// - readySignal is always async (returns Promise) — only pipes ever override
-//   it; the default resolves immediately, so files never block poll.
+// - read/write/pread/pwrite return a union — a bare result when the op is
+//   synchronous, a Promise when it may suspend.
+// - seek/tell/statSize/readdir/etc. are always synchronous — they touch only
+//   cursor or snapshot state.
+// - readySignal is always async (returns Promise); the default resolves
+//   immediately.
 
 import type { DirEntry } from './fs';
 import type { IovecValue } from './struct';
@@ -16,10 +16,14 @@ import type { IovecValue } from './struct';
 export type ReadResult = { ok: true; n: number } | { ok: false; errno: number };
 export type WriteResult = { ok: true; n: number } | { ok: false; errno: number };
 export type SeekResult = { ok: true; cursor: number } | { ok: false; errno: number };
+export type TruncateResult = { ok: true } | { ok: false; errno: number };
 
 export abstract class Fd {
   /** WASI filetype constant (e.g. REGULAR_FILE, CHARACTER_DEVICE). */
   abstract readonly filetype: number;
+
+  /** Runtime fd flags — a `FdFlags` bitmask set via `setFlags`. Default 0. */
+  private flags = 0;
 
   /** Scatter-read up to the iovecs' total capacity into `mem`'s iovec buffers.
    *  Returns `{ ok, n }` (n may be 0 at EOF). */
@@ -49,7 +53,7 @@ export abstract class Fd {
   }
 
   /** Set the underlying store to exactly `size` bytes (truncate or extend). */
-  truncate(_size: number): void {
+  truncate(_size: number): TruncateResult {
     throw new UnsupportedError('truncate');
   }
 
@@ -58,10 +62,18 @@ export abstract class Fd {
     throw new UnsupportedError('seek');
   }
 
-  /** Current cursor position. */
-  tell(): number {
+  /** Current cursor position. WASI defines `fd_tell` as `fd_seek(fd, 0, CUR)`,
+   *  so it shares `SeekResult` and the same errno set as `seek`. */
+  tell(): SeekResult {
     throw new UnsupportedError('tell');
   }
+
+  /** Flush data and metadata to stable storage. Maps from WASI `fd_sync`.
+   *  Default: no-op. */
+  sync(): void {}
+
+  /** Flush data only. Maps from WASI `fd_datasync`. Default: no-op. */
+  datasync(): void {}
 
   /** Snapshot of directory entries (sorted by name); index is the fd_readdir cookie. */
   readdir(): readonly DirEntry[] {
@@ -78,12 +90,25 @@ export abstract class Fd {
     return 0;
   }
 
-  /** Set the nonblocking flag. Default: no-op. */
-  setNonblocking(_nb: boolean): void {}
+  /** Set this fd's runtime flags (a `FdFlags` bitmask): APPEND/NONBLOCK/DSYNC/
+   *  RSYNC/SYNC. These are the per-fd, mutable flags — set at open AND
+   *  changeable afterward (WASI `fd_fdstat_set_flags`). Default stores the
+   *  value; override to react to a change.
+   *
+   *  The open-time flags (`oflags`: CREAT/TRUNC/...) are a separate type,
+   *  consumed once by `Vfs.open` and not kept as fd state — see `OpenFlags`. */
+  setFlags(flags: number): void {
+    this.flags = flags;
+  }
 
-  /** Nonblocking flag. Default: false. */
-  getNonblocking(): boolean {
-    return false;
+  /** Current `FdFlags` bitmask. */
+  getFlags(): number {
+    return this.flags;
+  }
+
+  /** True iff `flag` (a single `FdFlags` bit) is currently set. */
+  hasFlag(flag: number): boolean {
+    return (this.flags & flag) !== 0;
   }
 
   /** Whether `type` (FD_READ/FD_WRITE) can proceed without blocking. Default: false. */
@@ -92,7 +117,7 @@ export abstract class Fd {
   }
 
   /** Resolves when the fd becomes ready for `type`; resolves immediately if already ready.
-   *  Default: resolves immediately — files are always ready, only pipes wait. */
+   *  Default: resolves immediately. */
   readySignal(_type: number): Promise<void> {
     return Promise.resolve();
   }
