@@ -112,7 +112,10 @@ describe('MemoryVfs.open', () => {
     const vfs = new MemoryVfs();
     const r = vfs.open('/d', flags({ create: true, directory: true }));
     r.backend.close();
-    expectErrno(() => vfs.open('/d', flags({ create: true, directory: true, exclusive: true })), Result.EEXIST);
+    expectErrno(
+      () => vfs.open('/d', flags({ create: true, directory: true, exclusive: true })),
+      Result.EEXIST,
+    );
   });
   // root cases
   it('open / returns root dir', () => {
