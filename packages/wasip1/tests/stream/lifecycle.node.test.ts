@@ -21,7 +21,6 @@ import {
   readError,
   readOutcome,
   readValue,
-  tick,
 } from '../helpers';
 
 const openPorts: MessagePort[] = [];
@@ -149,13 +148,10 @@ test('consumer: cancel after a terminal state is a no-op', async () => {
 
 test('consumer: cancel notifies the provider via onCancel', async () => {
   const { provider, consumer } = pair();
-  let cancelled: string | undefined;
-  provider.onCancel = reason => {
-    cancelled = reason;
-  };
-
-  consumer.cancel('please stop');
-  await tick(); // let the cancel message be delivered
+  const cancelled = await new Promise<string>(resolve => {
+    provider.onCancel = reason => resolve(reason ?? '');
+    consumer.cancel('please stop');
+  });
 
   expect(cancelled).toBe('please stop');
   // Provider is now closed: further writes throw.
@@ -164,10 +160,16 @@ test('consumer: cancel notifies the provider via onCancel', async () => {
 
 // ---------- read() shape: sync vs async ----------
 
-test('consumer: read() is synchronous when a chunk is already queued', async () => {
-  const { provider, consumer } = pair();
-  provider.write(buf(8, 0));
-  await tick(); // let the batch be delivered & queued
+test('consumer: read() is synchronous when a chunk is already queued', () => {
+  // Only the consumer side is exercised — the provider's port is closed
+  // immediately since this test bypasses postMessage entirely.
+  const [a, b] = makeChannel();
+  a.close();
+  openPorts.push(b);
+  const consumer = createStreamConsumer(b);
+  // Dispatch a chunk directly on the consumer's port to synchronously
+  // fill its queue, bypassing async postMessage delivery.
+  b.dispatchEvent(new MessageEvent('message', { data: [buf(8, 0)] }));
   const r = consumer.read();
   expect(r).not.toBeInstanceOf(Promise);
   expect(bytes(r as ArrayBuffer)).toEqual(expectedBytes(8, 0));
