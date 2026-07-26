@@ -73,14 +73,11 @@ test('toWritableStream: abort propagates as an error to the consumer', async () 
 
 test('toReadableStream: consumer cancel reaches the provider via onCancel', async () => {
   const { provider, consumer } = pair();
-  let cancelled: string | undefined;
-  provider.onCancel = reason => {
-    cancelled = reason;
-  };
-
   const rs = toReadableStream(consumer);
-  await rs.cancel('reader gone');
-  await tick();
+  const cancelled = await new Promise<string>(resolve => {
+    provider.onCancel = reason => resolve(reason ?? '');
+    void rs.cancel('reader gone');
+  });
 
   expect(cancelled).toBe('reader gone');
   expect(() => provider.write(buf(4))).toThrow(/closed/);
