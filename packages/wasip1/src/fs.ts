@@ -36,22 +36,15 @@ export type OpenResult =
   | { kind: 'file'; backend: FileBackend }
   | { kind: 'dir'; backend: DirBackend };
 
-/** Flags influencing open semantics (WASI oflags + a derived write bit).
- *
- *  Incompatible combinations (open throws EINVAL):
- *    combination          │ reason
- *   ──────────────────────┼───────────────────────────────────
- *    truncate && !write   │ truncation requires write access
- *    exclusive && !create │ EXCL is meaningless without CREAT
- */
+/** Flags influencing open semantics (WASI oflags). */
 export interface OpenFlags {
+  /** true: create the target if missing (kind chosen by `directory`).
+   *  false: missing target throws ENOENT. */
+  create: boolean;
   /** true: target must be a directory — an existing file throws ENOTDIR,
    *  and with `create` a directory is created instead of a file.
    *  false: opens files; an existing directory still opens as a dir. */
   directory: boolean;
-  /** true: create the target if missing (kind chosen by `directory`).
-   *  false: missing target throws ENOENT. */
-  create: boolean;
   /** Only meaningful with `create`.
    *  true: target must not exist yet — throws EEXIST if it does.
    *  false: an existing target is opened as-is. */
@@ -59,9 +52,6 @@ export interface OpenFlags {
   /** true: an existing regular file is cleared to 0 bytes on open.
    *  false: existing content is kept. No effect on dirs or fresh files. */
   truncate: boolean;
-  /** true: caller intends to write — read-only backends throw EROFS.
-   *  false: read-only access. */
-  write: boolean;
 }
 
 /** Transport-agnostic virtual filesystem (path ops are sync).
