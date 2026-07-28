@@ -7,8 +7,8 @@
 //   synchronous, a Promise when it may suspend.
 // - seek/tell/statSize/readdir/etc. are always synchronous — they touch only
 //   cursor or snapshot state.
-// - readySignal is always async (returns Promise); the default resolves
-//   immediately.
+// - onReady registers a one-shot readiness callback. The default never fires
+//   (poll relies on `isReady` or other fds / timeouts).
 
 import type { DirEntry } from './fs';
 import type { IovecValue } from './struct';
@@ -120,10 +120,13 @@ export abstract class Fd {
     return false;
   }
 
-  /** Resolves when the fd becomes ready for `type`; resolves immediately if already ready.
-   *  Default: resolves immediately. */
-  readySignal(_type: number): Promise<void> {
-    return Promise.resolve();
+  /** Register `cb` to fire when the fd becomes ready for `type`. Returns a
+   *  deregister function — callers MUST call it when they no longer need the
+   *  notification (e.g. after each poll cycle) to prevent handler accumulation.
+   *  Default: never fires — the fd cannot signal async readiness; poll relies
+   *  on `isReady` (step 0) or other fds / timeouts to wake up. */
+  onReady(_type: number, _cb: () => void): () => void {
+    return () => {};
   }
 
   /** Release resources. Default: no-op. */
