@@ -139,6 +139,13 @@ describe('FileFd.truncate', () => {
   });
 });
 
+describe('FileFd.readdir', () => {
+  // A regular file is not a directory → ENOTDIR (POSIX readdir on a non-dir fd).
+  it('returns ENOTDIR', () => {
+    expect(fileFd().fd.readdir()).toEqual({ ok: false, errno: Result.ENOTDIR });
+  });
+});
+
 describe('FileFd — fdflags storage', () => {
   it('setFlags / getFlags round-trip stores the full mask', () => {
     const { fd } = fileFd();

@@ -10,6 +10,13 @@ function dirFd(entries: DirEntry[] = []): DirFd {
   return new DirFd(entries, '/');
 }
 
+// DirFd.readdir always returns ok:true — pull entries out for field-level checks.
+function readdirEntries(fd: DirFd): readonly DirEntry[] {
+  const r = fd.readdir();
+  if (!r.ok) throw new Error('DirFd.readdir should succeed');
+  return r.entries;
+}
+
 describe('DirFd — identity', () => {
   it('filetype is DIRECTORY', () => {
     expect(dirFd().filetype).toBe(Filetype.DIRECTORY);
@@ -27,7 +34,7 @@ describe('DirFd.readdir', () => {
       { name: 'a.txt', type: Filetype.REGULAR_FILE },
       { name: 'b.dir', type: Filetype.DIRECTORY },
     ]);
-    expect(fd.readdir().map(e => e.name)).toEqual(['a.txt', 'b.dir', 'c.txt']);
+    expect(readdirEntries(fd).map(e => e.name)).toEqual(['a.txt', 'b.dir', 'c.txt']);
   });
 
   it('snapshots — later mutation of the input array is not visible', () => {
@@ -37,7 +44,7 @@ describe('DirFd.readdir', () => {
     ];
     const fd = dirFd(input);
     input.push({ name: '0-zulu', type: Filetype.REGULAR_FILE });
-    expect(fd.readdir().map(e => e.name)).toEqual(['a', 'b']);
+    expect(readdirEntries(fd).map(e => e.name)).toEqual(['a', 'b']);
   });
 
   it('does not mutate the input array', () => {
@@ -50,7 +57,7 @@ describe('DirFd.readdir', () => {
   });
 
   it('is empty for an empty directory', () => {
-    expect(dirFd().readdir()).toEqual([]);
+    expect(dirFd().readdir()).toEqual({ ok: true, entries: [] });
   });
 });
 

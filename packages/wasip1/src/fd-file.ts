@@ -1,5 +1,12 @@
 import { FdFlags, Filetype, Result, Whence } from './consts';
-import { Fd, type ReadResult, type SeekResult, type TruncateResult, type WriteResult } from './fd';
+import {
+  Fd,
+  type ReaddirResult,
+  type ReadResult,
+  type SeekResult,
+  type TruncateResult,
+  type WriteResult,
+} from './fd';
 import type { FileBackend } from './fs';
 import type { IovecValue } from './struct';
 
@@ -84,6 +91,11 @@ export class FileFd extends Fd {
   truncate(size: number): TruncateResult {
     this.backend.setSize(size);
     return { ok: true };
+  }
+
+  /** Regular files aren't directories → ENOTDIR (POSIX readdir on a non-dir fd). */
+  readdir(): ReaddirResult {
+    return { ok: false, errno: Result.ENOTDIR };
   }
 
   seek(offset: number, whence: number): SeekResult {
