@@ -11,6 +11,7 @@ import {
   type OpenResult,
   type Vfs,
 } from './fs';
+import type { VfsFactory } from './fs-registry';
 
 // ---- MemoryFileBackend ----
 
@@ -190,3 +191,7 @@ export class MemoryVfs implements Vfs {
     return { type: 'memory' };
   }
 }
+
+/** Factory for the `memory` backend — register at the composition root via
+ *  registerVfs('memory', memoryVfsFactory). MemoryVfs needs no async setup. */
+export const memoryVfsFactory: VfsFactory = () => Promise.resolve(new MemoryVfs());
