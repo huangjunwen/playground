@@ -1,5 +1,12 @@
 import { Filetype, Result } from './consts';
-import { Fd, type ReadResult, type SeekResult, type TruncateResult, type WriteResult } from './fd';
+import {
+  Fd,
+  type ReaddirResult,
+  type ReadResult,
+  type SeekResult,
+  type TruncateResult,
+  type WriteResult,
+} from './fd';
 import type { DirEntry } from './fs';
 
 export class DirFd extends Fd {
@@ -13,8 +20,8 @@ export class DirFd extends Fd {
     this.#entries = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
 
-  readdir(): readonly DirEntry[] {
-    return this.#entries;
+  readdir(): ReaddirResult {
+    return { ok: true, entries: this.#entries };
   }
 
   read(): ReadResult {

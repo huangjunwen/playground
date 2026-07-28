@@ -17,6 +17,9 @@ export type ReadResult = { ok: true; n: number } | { ok: false; errno: number };
 export type WriteResult = { ok: true; n: number } | { ok: false; errno: number };
 export type SeekResult = { ok: true; cursor: number } | { ok: false; errno: number };
 export type TruncateResult = { ok: true } | { ok: false; errno: number };
+export type ReaddirResult =
+  | { ok: true; entries: readonly DirEntry[] }
+  | { ok: false; errno: number };
 
 export abstract class Fd {
   /** WASI filetype constant (e.g. REGULAR_FILE, CHARACTER_DEVICE). */
@@ -75,8 +78,9 @@ export abstract class Fd {
   /** Flush data only. Maps from WASI `fd_datasync`. Default: no-op. */
   datasync(): void {}
 
-  /** Snapshot of directory entries (sorted by name); index is the fd_readdir cookie. */
-  readdir(): readonly DirEntry[] {
+  /** Snapshot of directory entries (sorted by name); index is the fd_readdir cookie.
+   *  Non-directory fds return `{ ok: false, errno: ENOTDIR }`. */
+  readdir(): ReaddirResult {
     throw new UnsupportedError('readdir');
   }
 
