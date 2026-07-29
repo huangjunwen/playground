@@ -3,8 +3,14 @@
  * assets.json and every file under `vendor/`.
  */
 
-/** A single declared asset (e.g. raw or optimized wasm). */
+/** A single declared asset, enriched with its registry lookup keys at runtime. */
 export interface AssetEntry {
+  /** Family this asset belongs to (e.g. 'als-wasm'). */
+  family: string;
+  /** Version key within the family (e.g. 'v6'). */
+  version: string;
+  /** Asset name within the version (e.g. 'opt'). */
+  asset: string;
   /** On-disk filename under `vendor/<family>/<version>/`. */
   filename: string;
   /** Hex SHA-256 anchor (absent for non-reproducible assets). */
@@ -75,7 +81,15 @@ const _entries: Record<string, Record<string, Record<string, AssetEntry>>> = {};
 for (const [key, params] of Object.entries(_params)) {
   const name = familyFromKey(key);
   _defaults[name] = params.defaultVersion;
-  _entries[name] = _assets[`./scripts/families/${name}/assets.json`] ?? {};
+  const versions = _assets[`./scripts/families/${name}/assets.json`] ?? {};
+  for (const [version, assets] of Object.entries(versions)) {
+    for (const [asset, entry] of Object.entries(assets)) {
+      entry.family = name;
+      entry.version = version;
+      entry.asset = asset;
+    }
+  }
+  _entries[name] = versions;
 }
 
 function _resolveVersion(family: string, version?: string): Record<string, AssetEntry> {

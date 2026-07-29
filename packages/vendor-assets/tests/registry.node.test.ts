@@ -11,11 +11,17 @@ test('listAssets enumerates the declared assets for als-wasm', () => {
 
 test('getAssetInfo returns the declared metadata for raw + opt', () => {
   const raw = getAssetInfo('als-wasm', 'raw');
+  expect(raw.family).toBe('als-wasm');
+  expect(raw.version).toBe('v6');
+  expect(raw.asset).toBe('raw');
   expect(raw.filename).toBe('als-2.8.0.wasm');
   expect(raw.sha256!).toMatch(/^[0-9a-f]{64}$/);
   expect(raw.sizeBytes).toBeGreaterThan(0);
 
   const opt = getAssetInfo('als-wasm', 'opt');
+  expect(opt.family).toBe('als-wasm');
+  expect(opt.version).toBe('v6');
+  expect(opt.asset).toBe('opt');
   expect(opt.filename).toBe('als-2.8.0-opt.wasm');
   expect(opt.sha256!).toMatch(/^[0-9a-f]{64}$/);
   expect(opt.sizeBytes).toBeGreaterThan(0);
