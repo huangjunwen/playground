@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteStreamLspTransport } from '../src/transport-stream';
+import { ByteStreamLspTransport } from '../../src/transport-stream';
 
 describe('ByteStreamLspTransport', () => {
   it('round-trips a message through in-memory streams', async () => {

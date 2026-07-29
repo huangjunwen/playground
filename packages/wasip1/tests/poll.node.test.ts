@@ -4,10 +4,10 @@
 // in tests/struct; here the values are built directly.
 
 import { describe, expect, it } from 'vitest';
-import { EVENTTYPE, Result } from '../../src/consts';
-import { Fd } from '../../src/fd';
-import { runPoll, subReady } from '../../src/poll';
-import type { SubscriptionValue } from '../../src/struct';
+import { EVENTTYPE, Result } from '../src/consts';
+import { Fd } from '../src/fd';
+import { runPoll, subReady } from '../src/poll';
+import type { SubscriptionValue } from '../src/struct';
 
 // Stub Fd whose readiness and available bytes are externally controlled.
 // onReady is left at the default (never fires) — none of these tests reach the

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LspTransport } from '../src/transport';
-import { LoggingTransport } from '../src/transport-logging';
+import type { LspTransport } from '../../src/transport';
+import { LoggingTransport } from '../../src/transport-logging';
 
 function fakeInner() {
   const sent: Record<string, unknown>[] = [];

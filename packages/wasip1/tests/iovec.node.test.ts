@@ -4,7 +4,7 @@
 // decoded IovecValue[].
 
 import { describe, expect, it } from 'vitest';
-import { iovTotal, readFromIovs, writeToIovs } from '../../src/iovec';
+import { iovTotal, readFromIovs, writeToIovs } from '../src/iovec';
 
 describe('iovTotal', () => {
   it('sums each vector length', () => {

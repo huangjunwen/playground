@@ -6,7 +6,7 @@
 // family
 
 import { describe, expect, it } from 'vitest';
-import { EVENTTYPE, SUBSCRIPTION_CLOCK_ABSTIME } from '../../src/consts';
+import { EVENTTYPE, SUBSCRIPTION_CLOCK_ABSTIME } from '../src/consts';
 import {
   Dirent,
   Event,
@@ -17,7 +17,7 @@ import {
   Prestat,
   Subscription,
   type SubscriptionValue,
-} from '../../src/struct';
+} from '../src/struct';
 
 /** A zeroed Mem of n bytes. */
 function mem(n: number): Mem {
