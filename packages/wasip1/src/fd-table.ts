@@ -22,9 +22,10 @@ export class FdTable {
 
   /** Open a new fd. If opts.fd is given, reserve that number (for well-known
    *  fds like 0/1/2) and bump nextFd past it; otherwise allocate the next
-   *  number automatically. */
+   *  number automatically. An already-open fd is closed first (no leak). */
   open(desc: Fd, rights: bigint, opts?: { fd?: number; onClose?: () => void }): number {
     const fd = opts?.fd ?? this.nextFd++;
+    if (this.entries.has(fd)) this.close(fd);
     this.entries.set(fd, { desc, rights, onClose: opts?.onClose });
     if (fd >= this.nextFd) this.nextFd = fd + 1;
     return fd;
