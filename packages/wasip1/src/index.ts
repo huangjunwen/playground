@@ -24,6 +24,7 @@ export {
 export { MemoryDirBackend, MemoryFileBackend, MemoryVfs, memoryVfsFactory } from './fs-mem';
 export { createVfs, getVfsFactory, registerVfs, type VfsFactory } from './fs-registry';
 export { type RunConfig, type RunHandle, WasiHost } from './host';
+export { createHostFsServer, HostFs, HostFsMethodNames, type HostFsServerDeps } from './host-fs';
 export { createWasiImports, ProcExit, type WasiCtx } from './imports';
 export { iovTotal, readFromIovs, writeToIovs } from './iovec';
 export {
