@@ -27,6 +27,12 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@vitest/browser@3.2.7)
 
+  packages/lsp:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/vendor-assets:
     devDependencies:
       typescript:
