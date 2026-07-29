@@ -14,7 +14,9 @@ import type { StreamConsumer, StreamProvider } from '../../src/ipc';
 /** True iff `fd`'s class provides its own implementation of `method`
  *  (i.e. did not inherit Fd's default). */
 function isOverridden(fd: Fd, method: keyof Fd): boolean {
-  return (fd as any)[method] !== (Fd.prototype as any)[method];
+  const obj = fd as unknown as Record<string, unknown>;
+  const proto = Fd.prototype as unknown as Record<string, unknown>;
+  return obj[method] !== proto[method];
 }
 
 // Minimal stream stubs — the override check only compares function identity,
