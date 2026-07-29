@@ -10,6 +10,7 @@ import { FdTable } from './fd-table';
 import { FsError, type Vfs } from './fs';
 import { memoryVfsFactory } from './fs-mem';
 import { createVfs, registerVfs } from './fs-registry';
+import { createHostFsServer } from './host-fs';
 import { createWasiImports, ProcExit, type WasiCtx } from './imports';
 import { createRpcServer, createStreamConsumer, createStreamProvider } from './ipc-mp';
 
@@ -103,4 +104,8 @@ async function run(args: RunArgs): Promise<number> {
 }
 
 // ---- Bootstrapping ----
-createRpcServer(self as unknown as Worker, { init, run });
+createRpcServer(self as unknown as Worker, {
+  init,
+  run,
+  ...createHostFsServer({ getVfs: () => vfs }),
+});

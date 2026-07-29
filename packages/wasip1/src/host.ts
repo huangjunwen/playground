@@ -1,6 +1,7 @@
 // Main-thread driver for WASI Preview 1. Spawns a worker and exposes Web
 // Streams for stdin/stdout/stderr plus an exit-code promise.
 
+import { HostFs } from './host-fs';
 import { type RpcClient, toReadableStream, toWritableStream } from './ipc';
 import { createRpcClient, createStreamConsumer, createStreamProvider, transfer } from './ipc-mp';
 
@@ -27,12 +28,13 @@ export class WasiHost {
     this.rpc = createRpcClient(this.worker);
   }
 
-  /** Build the worker-side Vfs from a backend config. Re-callable; each call
-   *  replaces the previous vfs. The Vfs is built entirely from `config` (e.g.
-   *  an initial file tree for the memory backend) since there is no host-side
-   *  path access over RPC. */
-  async init(config: Record<string, unknown>): Promise<void> {
+  /** Build the worker-side Vfs from a backend config (e.g. an initial file
+   *  tree for the memory backend) and return a HostFs client for host-side
+   *  path operations over RPC. Re-callable; each call replaces the previous
+   *  vfs. */
+  async init(config: Record<string, unknown>): Promise<HostFs> {
     await this.rpc.call('init', [config]);
+    return new HostFs(this.rpc);
   }
 
   /** Run a wasm program. Returns stdio streams and an exit-code promise

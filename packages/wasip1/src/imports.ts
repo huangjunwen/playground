@@ -22,6 +22,7 @@ import { DirFd } from './fd-dir';
 import { FileFd } from './fd-file';
 import type { FdTable } from './fd-table';
 import { type DirEntry, FsError, type OpenFlags, type OpenResult, type Vfs } from './fs';
+import { mkdir, resolvePath } from './path';
 import { runPoll } from './poll';
 import {
   Dirent,
@@ -69,46 +70,6 @@ export class ProcExit extends Error {
     super('proc_exit');
     this.name = 'ProcExit';
   }
-}
-
-/** Collapse `.`, `..`, duplicate/trailing slashes to a canonical absolute
- *  path. */
-function normalizePath(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  const parts = path.split('/').filter(p => p.length > 0);
-  const stack: string[] = [];
-  for (const part of parts) {
-    if (part === '.') continue;
-    if (part === '..') {
-      stack.pop();
-      continue;
-    }
-    stack.push(part);
-  }
-  return `/${stack.join('/')}`;
-}
-
-/** Resolve a WASI path relative to dirFd. Honours WASI's relative-path
- *  semantics: the path argument of path_open / path_filestat_get etc is
- *  relative to the directory referenced by dirFd. Falls back to treating
- *  the path as absolute if dirFd is invalid or not a DirFd. */
-function resolvePath(fdTable: FdTable, dirFd: number, childPath: string): string {
-  const entry = fdTable.get(dirFd);
-  if (entry?.desc instanceof DirFd) return normalizePath(`${entry.desc.vfsPath}/${childPath}`);
-  return childPath;
-}
-
-/** Create a directory at `path` (single level; parent must exist). Thin
- *  wrapper over open({create, exclusive, directory}) so backends need no
- *  separate mkdir hook. Throws FsError (EEXIST if exists, ENOENT if parent
- *  missing). */
-function mkdir(vfs: Vfs, path: string): void {
-  vfs.open(path, {
-    create: true,
-    exclusive: true,
-    directory: true,
-    truncate: false,
-  });
 }
 
 /** Map a thrown FsError to its errno; unexpected throws become EIO. */
