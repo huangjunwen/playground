@@ -28,10 +28,8 @@ export class WasiHost {
     this.rpc = createRpcClient(this.worker);
   }
 
-  /** Build the worker-side Vfs from a backend config (e.g. an initial file
-   *  tree for the memory backend) and return a HostFs client for host-side
-   *  path operations over RPC. Re-callable; each call replaces the previous
-   *  vfs. */
+  /** Build the worker-side Vfs from a backend config and return a HostFs client
+   *  for host-side path operations over RPC. */
   async init(config: Record<string, unknown>): Promise<HostFs> {
     await this.rpc.call('init', [config]);
     return new HostFs(this.rpc);
