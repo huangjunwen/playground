@@ -3,9 +3,9 @@
  *  path translation. */
 
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { NodeFs } from './node/fs';
-import { childToRunHandle } from './node/util';
-import type { Command, RunEnv, RunHandle } from './types';
+import type { Command, RunEnv, RunHandle } from '../types';
+import { NodeFs } from './fs';
+import { childToRunHandle } from './util';
 
 export class NativeRunEnv implements RunEnv {
   readonly fs = new NodeFs();

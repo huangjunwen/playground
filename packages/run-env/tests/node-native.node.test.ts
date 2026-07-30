@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NativeRunEnv } from '../src/node-native';
+import { NativeRunEnv } from '../src/node/node-native';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

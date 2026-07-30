@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import wasmUrl from '../../vendor-assets/vendor/als-wasm/v6/als-2.8.0-opt.wasm?url';
-import { WebWasiRunEnv } from '../src/web-wasi';
+import { WebWasiRunEnv } from '../src/web/web-wasi';
 
 const decoder = new TextDecoder();
 const ALS_TIMEOUT = 60_000;

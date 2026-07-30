@@ -5,7 +5,7 @@
  */
 
 import { type HostFs, type RunConfig, WasiHost } from '@playground/wasip1';
-import type { Command, RunEnv, RunHandle } from './types';
+import type { Command, RunEnv, RunHandle } from '../types';
 
 export class WebWasiRunEnv implements RunEnv {
   private readonly _host: WasiHost;

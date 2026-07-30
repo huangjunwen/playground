@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveAssetPath } from '@playground/vendor-assets';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NodeWasiRunEnv } from '../src/node-wasi';
+import { NodeWasiRunEnv } from '../src/node/node-wasi';
 
 const WASM_PATH = resolveAssetPath('als-wasm', 'opt');
 
