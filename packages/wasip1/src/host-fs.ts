@@ -43,8 +43,8 @@ export class HostFs {
     ]);
   }
 
-  stat(path: string): Promise<{ size: number; filetype: number }> {
-    return this._rpc.call<{ size: number; filetype: number }>(HostFsMethodNames.STAT, [path]);
+  stat(path: string): Promise<{ size: number; isDirectory: boolean }> {
+    return this._rpc.call<{ size: number; isDirectory: boolean }>(HostFsMethodNames.STAT, [path]);
   }
 
   remove(path: string): Promise<void> {
@@ -141,8 +141,9 @@ export function createHostFsServer(deps: HostFsServerDeps): RpcMethods {
       }
     },
 
-    [HostFsMethodNames.STAT](path: string): { size: number; filetype: number } {
-      return deps.getVfs().stat(normalizePath(path));
+    [HostFsMethodNames.STAT](path: string): { size: number; isDirectory: boolean } {
+      const s = deps.getVfs().stat(normalizePath(path));
+      return { size: s.size, isDirectory: s.filetype === Filetype.DIRECTORY };
     },
 
     [HostFsMethodNames.REMOVE](path: string): void {
