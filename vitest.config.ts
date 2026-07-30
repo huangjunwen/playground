@@ -20,13 +20,13 @@ export default defineConfig({
       },
       {
         test: {
-          name: 'browser',
+          name: 'web',
           include: [
-            'packages/**/src/**/*.browser.test.ts',
-            'packages/**/tests/**/*.browser.test.ts',
-            'apps/**/src/**/*.browser.test.ts',
-            'apps/**/tests/**/*.browser.test.ts',
-            'tests/**/*.browser.test.ts',
+            'packages/**/src/**/*.web.test.ts',
+            'packages/**/tests/**/*.web.test.ts',
+            'apps/**/src/**/*.web.test.ts',
+            'apps/**/tests/**/*.web.test.ts',
+            'tests/**/*.web.test.ts',
           ],
           exclude: ['**/node_modules/**', '**/dist/**'],
           browser: {
