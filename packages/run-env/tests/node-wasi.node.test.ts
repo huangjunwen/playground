@@ -47,12 +47,15 @@ describe('NodeWasiRunEnv', () => {
     );
 
     it(
-      'terminate() does not throw after process exits',
+      'terminate() kills a running wasm process',
       async () => {
         const env = new NodeWasiRunEnv();
-        const handle = env.run({ program: WASM_PATH, args: ['als', '--version'] });
-        await handle.exit;
-        expect(() => env.terminate()).not.toThrow();
+        const handle = env.run({ program: WASM_PATH, args: ['als', '--raw'] });
+        // Give it a moment to start, then kill.
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        env.terminate();
+        // POSIX convention: SIGKILL (signal 9) → exit code 137.
+        expect(await handle.exit).toBe(137);
       },
       ALS_TIMEOUT,
     );

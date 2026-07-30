@@ -42,7 +42,7 @@ export interface RunHandle {
   stdin: WritableStream<ArrayBuffer>;
   stdout: ReadableStream<ArrayBuffer>;
   stderr: ReadableStream<ArrayBuffer>;
-  /** Resolves to the exit code. Rejects on abnormal termination. */
+  /** Resolves to the exit code. Killed by signal N → 128+N (POSIX convention). */
   exit: Promise<number>;
 }
 

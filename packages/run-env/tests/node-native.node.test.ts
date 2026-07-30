@@ -64,8 +64,8 @@ describe('NativeRunEnv', () => {
         args: ['-e', 'setInterval(() => {}, 1000)'],
       });
       env.terminate();
-      // The process should exit promptly (SIGKILL). Just verify it resolves.
-      await expect(handle.exit).resolves.toBeTypeOf('number');
+      // POSIX convention: SIGKILL (signal 9) → exit code 137.
+      expect(await handle.exit).toBe(137);
     });
   });
 

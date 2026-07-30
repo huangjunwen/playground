@@ -32,7 +32,15 @@ export class WebWasiRunEnv implements RunEnv {
       args: cmd.args,
       env: cmd.env,
     };
-    return this._host.run(cfg);
+    const inner = this._host.run(cfg);
+    // Worker termination disposes the RPC client, causing exit to reject.
+    // Follow POSIX convention: resolve with 128+9 (SIGKILL = 137).
+    return {
+      stdin: inner.stdin,
+      stdout: inner.stdout,
+      stderr: inner.stderr,
+      exit: inner.exit.catch(() => 137),
+    };
   }
 
   terminate(): void {

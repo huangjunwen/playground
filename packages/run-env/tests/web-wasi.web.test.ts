@@ -67,8 +67,8 @@ describe('WebWasiRunEnv', () => {
       // Give it a moment to start
       await new Promise(resolve => setTimeout(resolve, 2000));
       env.terminate();
-      // Worker is killed; exit promise rejects because the RPC client is disposed.
-      await expect(handle.exit).rejects.toThrow();
+      // POSIX convention: SIGKILL (signal 9) → exit code 137.
+      expect(await handle.exit).toBe(137);
     },
     ALS_TIMEOUT,
   );
