@@ -53,6 +53,13 @@ export function resolveAssetUrl(family: string, asset: string, version?: string)
   return url;
 }
 
+/** Resolve the absolute filesystem path of a vendored asset (Node.js only). */
+export function resolveAssetPath(family: string, asset: string, version?: string): string {
+  const info = getAssetInfo(family, asset, version);
+  const v = version ?? _defaults[family]!;
+  return new URL(`../vendor/${family}/${v}/${info.filename}`, import.meta.url).pathname;
+}
+
 // ---- internal --------------------------------------------------------------
 
 const _params = import.meta.glob('./scripts/families/*/params.json', {

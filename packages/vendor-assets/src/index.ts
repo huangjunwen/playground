@@ -5,5 +5,6 @@ export {
   getAssetInfo,
   listAssets,
   listFamilies,
+  resolveAssetPath,
   resolveAssetUrl,
 } from './registry';
