@@ -6,8 +6,8 @@
  * `ipc-mp.ts` serializes it as a discriminated `{kind:'FsError', errno}`.
  */
 
-import { Result } from './consts';
-import { type DirBackend, type DirEntry, type FileBackend, FsError, type Vfs } from './fs';
+import { Filetype, Result } from './consts';
+import { type DirBackend, type FileBackend, FsError, type Vfs } from './fs';
 import type { RpcClient, RpcMethods } from './ipc';
 import { mkdir, mkdirRecursive, normalizePath } from './path';
 
@@ -37,8 +37,10 @@ export class HostFs {
     return this._rpc.call<void>(HostFsMethodNames.WRITE_FILE, [path, data]);
   }
 
-  listDir(path: string): Promise<DirEntry[]> {
-    return this._rpc.call<DirEntry[]>(HostFsMethodNames.LIST_DIR, [path]);
+  listDir(path: string): Promise<{ name: string; isDirectory: boolean }[]> {
+    return this._rpc.call<{ name: string; isDirectory: boolean }[]>(HostFsMethodNames.LIST_DIR, [
+      path,
+    ]);
   }
 
   stat(path: string): Promise<{ size: number; filetype: number }> {
@@ -127,10 +129,13 @@ export function createHostFsServer(deps: HostFsServerDeps): RpcMethods {
       }
     },
 
-    [HostFsMethodNames.LIST_DIR](path: string): DirEntry[] {
+    [HostFsMethodNames.LIST_DIR](path: string): { name: string; isDirectory: boolean }[] {
       const backend = openDirList(normalizePath(path));
       try {
-        return backend.list();
+        return backend.list().map(e => ({
+          name: e.name,
+          isDirectory: e.type === Filetype.DIRECTORY,
+        }));
       } finally {
         backend.close();
       }
