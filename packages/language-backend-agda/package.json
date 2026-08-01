@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ../.. packages/language-backend-agda",
     "test:watch": "vitest --root ../.. packages/language-backend-agda",
-    "test:bench": "vitest bench --run --root ../.. packages/language-backend-agda",
+    "test:bench:node": "vitest bench --run --root ../.. --project node packages/language-backend-agda/tests/benchmark/benchmark.node.bench.ts",
+    "test:bench:web": "vitest bench --run --root ../.. --project web packages/language-backend-agda/tests/benchmark/benchmark.web.bench.ts",
     "profile:dev": "vite --config profile-ui/vite.config.ts"
   },
   "dependencies": {
