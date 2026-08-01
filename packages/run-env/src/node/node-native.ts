@@ -8,6 +8,7 @@ import { NodeFs } from './fs';
 import { childToRunHandle } from './util';
 
 export class NativeRunEnv implements RunEnv {
+  readonly name = 'node-native';
   readonly fs = new NodeFs();
   private _child: ChildProcessWithoutNullStreams | null = null;
 

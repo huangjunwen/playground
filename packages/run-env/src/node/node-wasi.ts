@@ -58,6 +58,7 @@ export interface NodeWasiRunEnvOptions {
 }
 
 export class NodeWasiRunEnv implements RunEnv {
+  readonly name = 'node-wasi';
   private readonly _preopens: Record<string, string>;
   private readonly _nodeFlags: string[];
   private readonly _fs: Fs;

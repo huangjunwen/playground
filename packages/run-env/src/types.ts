@@ -49,6 +49,8 @@ export interface RunHandle {
 /** A program execution environment: provides filesystem access plus the
  *  ability to run commands. */
 export interface RunEnv {
+  /** Backend identifier (e.g. 'web-wasi', 'node-wasi', 'node-native'). */
+  readonly name: string;
   readonly fs: Fs;
   run(cmd: Command): RunHandle;
   /** Terminate the execution environment */
