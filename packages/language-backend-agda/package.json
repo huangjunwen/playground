@@ -1,0 +1,24 @@
+{
+  "name": "@playground/language-backend-agda",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root ../.. packages/language-backend-agda",
+    "test:watch": "vitest --root ../.. packages/language-backend-agda",
+    "test:bench": "vitest bench --run --root ../.. packages/language-backend-agda",
+    "profile:dev": "vite --config profile-ui/vite.config.ts"
+  },
+  "dependencies": {
+    "@playground/lsp": "workspace:*",
+    "@playground/run-env": "workspace:*",
+    "@playground/vendor-assets": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
