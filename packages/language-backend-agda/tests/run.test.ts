@@ -26,6 +26,8 @@ import { type AlsHandle, runAls } from '../src/run';
 import { AlsSession } from '../src/session';
 import { FakeRunEnv } from './fake-run-env';
 
+const isNode = typeof process !== 'undefined';
+
 describe('runAls — default resolution by env.name', () => {
   let env: FakeRunEnv;
   afterEach(() => env?.closeAll());
@@ -46,7 +48,7 @@ describe('runAls — default resolution by env.name', () => {
     expect(main.sent.some(m => m.method === 'initialize')).toBe(true);
   });
 
-  it('node-native defaults: bare binary, fixed data dir, host HOME', async () => {
+  it.skipIf(!isNode)('node-native defaults: bare binary, fixed data dir, host HOME', async () => {
     const saved = process.env.HOME;
     process.env.HOME = '/users/test';
     try {

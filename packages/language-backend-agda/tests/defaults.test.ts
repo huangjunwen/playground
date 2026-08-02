@@ -31,6 +31,8 @@ import {
   defaultHome,
 } from '../src/defaults';
 
+const isNode = typeof process !== 'undefined';
+
 describe('constants', () => {
   it('exposes the wasm family + default variant', () => {
     expect(ALS_WASM_FAMILY).toBe('als-wasm');
@@ -97,7 +99,7 @@ describe('defaultHome', () => {
     expect(defaultHome('node-wasi')).toBe('/root');
   });
 
-  it('node-native derives HOME from the current process env', () => {
+  it.skipIf(!isNode)('node-native derives HOME from the current process env', () => {
     const saved = process.env.HOME;
     try {
       process.env.HOME = '/users/test';
@@ -107,7 +109,7 @@ describe('defaultHome', () => {
     }
   });
 
-  it('node-native falls back to empty string when HOME is unset', () => {
+  it.skipIf(!isNode)('node-native falls back to empty string when HOME is unset', () => {
     const saved = process.env.HOME;
     try {
       delete process.env.HOME;
