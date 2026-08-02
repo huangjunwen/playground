@@ -9,9 +9,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ../.. packages/language-backend-agda",
-    "test:watch": "vitest --root ../.. packages/language-backend-agda",
-    "bench:node": "vitest bench --run --root ../.. --project node packages/language-backend-agda/tests/benchmark/cmdLoad.bench-node.ts",
-    "bench:web": "vitest bench --run --root ../.. --project web packages/language-backend-agda/tests/benchmark/cmdLoad.bench-web.ts",
+    "test:node": "vitest run --root ../.. --project node packages/language-backend-agda",
+    "test:web": "vitest run --root ../.. --project web packages/language-backend-agda",
+    "bench": "pnpm bench:node && pnpm bench:web",
+    "bench:node": "vitest bench --run --root ../.. --project node --no-file-parallelism packages/language-backend-agda/tests/benchmark/cmdLoad.bench-node.ts",
+    "bench:web": "vitest bench --run --root ../.. --project web --no-file-parallelism packages/language-backend-agda/tests/benchmark/cmdLoad.bench-web.ts",
     "profile:dev": "vite --config profile-ui/vite.config.ts"
   },
   "dependencies": {

@@ -6,8 +6,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ../.. packages/wasip1",
-    "test:watch": "vitest --root ../.. packages/wasip1",
-    "bench": "vitest bench --run --root ../.. packages/wasip1"
+    "test:node": "vitest run --root ../.. --project node packages/wasip1",
+    "test:web": "vitest run --root ../.. --project web packages/wasip1",
+    "bench": "pnpm bench:node && pnpm bench:web",
+    "bench:node": "vitest bench --run --root ../.. --project node --no-file-parallelism packages/wasip1",
+    "bench:web": "vitest bench --run --root ../.. --project web --no-file-parallelism packages/wasip1"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

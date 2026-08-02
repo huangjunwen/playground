@@ -11,7 +11,6 @@
     "test": "vitest run",
     "test:node": "vitest run --project node",
     "test:web": "vitest run --project web",
-    "test:watch": "vitest",
     "bench": "pnpm bench:node && pnpm bench:web",
     "bench:node": "vitest bench --run --project node --no-file-parallelism",
     "bench:web": "vitest bench --run --project web --no-file-parallelism",

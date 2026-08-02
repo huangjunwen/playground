@@ -11,7 +11,6 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ../.. packages/run-env",
-    "test:watch": "vitest --root ../.. packages/run-env",
     "bench": "vitest bench --run --root ../.. packages/run-env"
   },
   "dependencies": {
