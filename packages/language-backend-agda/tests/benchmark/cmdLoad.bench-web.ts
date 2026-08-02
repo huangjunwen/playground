@@ -22,6 +22,7 @@ import { WebWasiRunEnv } from '@playground/run-env/web';
 import { afterAll, beforeAll, bench } from 'vitest';
 import { DEFAULT_ALS_WORKSPACE } from '../../src/defaults';
 import { CommandBuilder } from '../../src/protocol/commands';
+import { HIGHLIGHTING_NONE, type HighlightingLevel } from '../../src/protocol/const';
 import { type AlsHandle, runAls } from '../../src/run';
 import { expectLoadResult } from './expect-load';
 import { SOURCES } from './sources';
@@ -33,10 +34,13 @@ const SETUP_TIMEOUT_MS = 60_000; // setup extracts builtin sources in ~1s; cover
 
 let runner: { env: WebWasiRunEnv; handle: AlsHandle };
 
-const loadOnce = (file: string): Promise<unknown> => {
+const loadOnce = (file: string, highlightingLevel?: HighlightingLevel): Promise<unknown> => {
   const path = `${DEFAULT_ALS_WORKSPACE}/${file}`;
+  const builder = highlightingLevel
+    ? new CommandBuilder(path, { highlightingLevel })
+    : new CommandBuilder(path);
   return Promise.race([
-    runner.handle.session.request(new CommandBuilder(path).load()),
+    runner.handle.session.request(builder.load()),
     new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`cmdLoad ${file} timed out (${COMMAND_TIMEOUT_MS}ms)`)),
@@ -72,6 +76,13 @@ for (const s of SOURCES) {
     `cmdLoad ${s.name} (~${s.lines} lines)`,
     async () => {
       await loadOnce(s.file);
+    },
+    { iterations: ITERS, warmupIterations: WARMUP, time: 0 },
+  );
+  bench(
+    `cmdLoad ${s.name} (~${s.lines} lines) no-highlight`,
+    async () => {
+      await loadOnce(s.file, HIGHLIGHTING_NONE);
     },
     { iterations: ITERS, warmupIterations: WARMUP, time: 0 },
   );
