@@ -7,19 +7,7 @@
  * In ALS, delivered using `--raw` mode as `{tag:'ResponseJSONRaw', contents:{<native>}}`.
  */
 
-// ---- Position / Range (JSONTop.hs, Position' () / Range encoders) ----
-
-export interface Position {
-  pos: number;
-  line: number;
-  col: number;
-}
-export interface Interval {
-  start: Position;
-  end: Position;
-}
-/** Range = array of intervals; `[]` for noRange. */
-export type Range = Interval[];
+import type { Range } from './range';
 
 // ---- Interaction objects (JSONTop.hs, EncodeTCM InteractionId / NamedMeta) ----
 

@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { cmdExit, cmdLoad } from '../src/protocol/commands';
+import { CommandBuilder } from '../src/protocol/commands';
 import { AlsSession } from '../src/session';
 import { createFakeLsp } from './fake-lsp';
 
@@ -24,7 +24,7 @@ describe('AlsSession', () => {
   });
 
   it('dispatches a command and resolves with the end response', async () => {
-    const p = session.request(cmdLoad('/Test.agda'));
+    const p = session.request(new CommandBuilder('/Test.agda').load());
     expect(transport.agdaCommands.length).toBe(1);
     expect(transport.agdaCommands[0]!.raw).toContain('Cmd_load');
     transport.injectEnd();
@@ -33,7 +33,7 @@ describe('AlsSession', () => {
   });
 
   it('collects every intermediate response in arrival order', async () => {
-    const p = session.request(cmdLoad('/Test.agda'));
+    const p = session.request(new CommandBuilder('/Test.agda').load());
     transport.injectNative({
       kind: 'Status',
       status: { showImplicitArguments: false, showIrrelevantArguments: false, checked: true },
@@ -48,8 +48,8 @@ describe('AlsSession', () => {
   });
 
   it('queues commands and executes them sequentially', async () => {
-    const p1 = session.request(cmdLoad('/A.agda'));
-    const p2 = session.request(cmdLoad('/B.agda'));
+    const p1 = session.request(new CommandBuilder('/A.agda').load());
+    const p2 = session.request(new CommandBuilder('/B.agda').load());
     expect(transport.agdaCommands.length).toBe(1);
     transport.injectEnd();
     const r1 = await p1;
@@ -61,7 +61,7 @@ describe('AlsSession', () => {
   });
 
   it('resolves on DoneExiting for Cmd_exit', async () => {
-    const p = session.request(cmdExit('/Test.agda'));
+    const p = session.request(new CommandBuilder('/Test.agda').exit());
     expect(transport.agdaCommands[0]!.raw).toContain('Cmd_exit');
     transport.injectNative({ kind: 'DoneExiting' });
     const responses = await p;
@@ -71,7 +71,8 @@ describe('AlsSession', () => {
   it('stream() yields each response progressively, terminal sentinel last', async () => {
     const kinds: string[] = [];
     const done = (async () => {
-      for await (const r of session.stream(cmdLoad('/Test.agda'))) kinds.push(r.kind);
+      for await (const r of session.stream(new CommandBuilder('/Test.agda').load()))
+        kinds.push(r.kind);
     })();
     await flush();
     transport.injectNative({
@@ -90,7 +91,8 @@ describe('AlsSession', () => {
   it('stream() stops after DoneExiting', async () => {
     const kinds: string[] = [];
     const done = (async () => {
-      for await (const r of session.stream(cmdExit('/Test.agda'))) kinds.push(r.kind);
+      for await (const r of session.stream(new CommandBuilder('/Test.agda').exit()))
+        kinds.push(r.kind);
     })();
     await flush();
     transport.injectNative({ kind: 'DoneExiting' });

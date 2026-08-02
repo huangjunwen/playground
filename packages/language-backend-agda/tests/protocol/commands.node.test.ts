@@ -1,158 +1,126 @@
 import { describe, expect, it } from 'vitest';
+import { CommandBuilder, type IOTCMCommand } from '../../src/protocol/commands';
 import {
-  cmdAbort,
-  cmdAutoAll,
-  cmdAutoOne,
-  cmdBackendHole,
-  cmdBackendTop,
-  cmdCase,
-  cmdCompute,
-  cmdConstraints,
-  cmdContext,
-  cmdElaborateGive,
-  cmdGive,
-  cmdGoalType,
-  cmdGoalTypeContext,
-  cmdGoalTypeContextCheck,
-  cmdGoalTypeContextInfer,
-  cmdHelperFunction,
-  cmdHighlight,
-  cmdInfer,
-  cmdIntro,
-  cmdLoad,
-  cmdLoadHighlightingInfo,
-  cmdLoadNoMetas,
-  cmdMetas,
-  cmdRefine,
-  cmdRefineOrIntro,
-  cmdSearchAboutToplevel,
-  cmdShowImplicitArgs,
-  cmdShowIrrelevantArgs,
-  cmdShowModuleContents,
-  cmdShowModuleContentsToplevel,
-  cmdShowVersion,
-  cmdSolveAll,
-  cmdSolveOne,
-  cmdToggleImplicitArgs,
-  cmdToggleIrrelevantArgs,
-  cmdTokenHighlighting,
-  cmdWhyInScope,
-  cmdWhyInScopeToplevel,
-} from '../../src/protocol/commands';
+  HIGHLIGHTING_INTERACTIVE,
+  HIGHLIGHTING_NON_INTERACTIVE,
+  HIGHLIGHTING_NONE,
+} from '../../src/protocol/const';
+
+const b = (path = '/Main.agda') => new CommandBuilder(path);
 
 describe('IOTCM command builders', () => {
   // ---- existing commands ----
 
-  it('cmdLoad produces Cmd_load with file path', () => {
-    expect(cmdLoad('/Main.agda').raw).toBe(
+  it('load produces Cmd_load with file path', () => {
+    expect(b().load().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_load "/Main.agda" [])',
     );
   });
 
-  it('cmdMetas produces Cmd_metas AsIs', () => {
-    expect(cmdMetas('/Main.agda').raw).toBe(
-      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_metas AsIs)',
-    );
+  it('metas produces Cmd_metas AsIs', () => {
+    expect(b().metas().raw).toBe('IOTCM "/Main.agda" NonInteractive Direct (Cmd_metas AsIs)');
   });
 
-  it('cmdGive produces Cmd_give WithoutForce <id> noRange <content>', () => {
-    expect(cmdGive('/Main.agda', 0, 'true').raw).toBe(
+  it('give produces Cmd_give WithoutForce <id> noRange <content>', () => {
+    expect(b().give(0, 'true').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_give WithoutForce 0 noRange "true")',
     );
   });
 
-  it('cmdGive with force uses WithForce', () => {
-    expect(cmdGive('/Main.agda', 0, 'true', { force: true }).raw).toBe(
+  it('give with force uses WithForce', () => {
+    expect(b().give(0, 'true', { force: true }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_give WithForce 0 noRange "true")',
     );
   });
 
-  it('cmdGive with custom range', () => {
-    expect(cmdGive('/Main.agda', 0, 'x', { range: 'r0-3' }).raw).toBe(
-      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_give WithoutForce 0 r0-3 "x")',
+  it('give with a per-call range serializes intervalsToRange', () => {
+    const pos = { pos: 1, line: 2, col: 3 };
+    const range = [{ start: pos, end: pos }];
+    expect(b().give(0, 'x', { range }).raw).toBe(
+      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_give WithoutForce 0 ' +
+        'intervalsToRange Nothing [Interval () (Pn () 1 2 3) (Pn () 1 2 3)] "x")',
     );
   });
 
-  it('cmdCase produces Cmd_make_case <id> noRange <content>', () => {
-    expect(cmdCase('/Main.agda', 1, 'x').raw).toBe(
+  it('case produces Cmd_make_case <id> noRange <content>', () => {
+    expect(b().case(1, 'x').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_make_case 1 noRange "x")',
     );
   });
 
-  it('cmdCase with custom range', () => {
-    expect(cmdCase('/Main.agda', 1, 'x', { range: 'r1-5' }).raw).toBe(
-      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_make_case 1 r1-5 "x")',
+  it('case with a per-call range serializes intervalsToRange', () => {
+    const pos = { pos: 4, line: 5, col: 6 };
+    const range = [{ start: pos, end: pos }];
+    expect(b().case(1, 'x', { range }).raw).toBe(
+      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_make_case 1 ' +
+        'intervalsToRange Nothing [Interval () (Pn () 4 5 6) (Pn () 4 5 6)] "x")',
     );
   });
 
-  it('cmdCompute produces Cmd_compute DefaultCompute with no goal id', () => {
-    expect(cmdCompute('/Main.agda').raw).toBe(
+  it('compute produces Cmd_compute DefaultCompute with no goal id', () => {
+    expect(b().compute().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_compute DefaultCompute)',
     );
   });
 
-  it('cmdCompute with goalId and expr', () => {
-    expect(cmdCompute('/Main.agda', 0, '2 + 2').raw).toBe(
+  it('compute with goalId and expr', () => {
+    expect(b().compute(0, '2 + 2').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_compute DefaultCompute 0 noRange "2 + 2")',
     );
   });
 
-  it('cmdCompute with computeMode', () => {
-    expect(cmdCompute('/Main.agda', 0, 'x', { computeMode: 'NormalisedCompute' }).raw).toBe(
+  it('compute with computeMode', () => {
+    expect(b().compute(0, 'x', { computeMode: 'NormalisedCompute' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_compute NormalisedCompute 0 noRange "x")',
     );
   });
 
   // ---- new commands ----
 
-  it('cmdAbort produces Cmd_abort', () => {
-    expect(cmdAbort('/Main.agda').raw).toBe('IOTCM "/Main.agda" NonInteractive Direct (Cmd_abort)');
+  it('abort produces Cmd_abort', () => {
+    expect(b().abort().raw).toBe('IOTCM "/Main.agda" NonInteractive Direct (Cmd_abort)');
   });
 
-  it('cmdAutoOne default', () => {
-    expect(cmdAutoOne('/Main.agda', 0).raw).toBe(
+  it('autoOne default', () => {
+    expect(b().autoOne(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_autoOne AsIs 0 noRange "")',
     );
   });
 
-  it('cmdAutoOne with rewriteMode', () => {
-    expect(cmdAutoOne('/Main.agda', 1, { rewriteMode: 'Normalised' }).raw).toBe(
+  it('autoOne with rewriteMode (via builder option)', () => {
+    expect(new CommandBuilder('/Main.agda', { rewriteMode: 'Normalised' }).autoOne(1).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_autoOne Normalised 1 noRange "")',
     );
   });
 
-  it('cmdAutoAll default', () => {
-    expect(cmdAutoAll('/Main.agda').raw).toBe(
-      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_autoAll AsIs)',
-    );
+  it('autoAll default', () => {
+    expect(b().autoAll().raw).toBe('IOTCM "/Main.agda" NonInteractive Direct (Cmd_autoAll AsIs)');
   });
 
-  it('cmdSolveAll default (all goals, no goalId)', () => {
-    expect(cmdSolveAll('/Main.agda').raw).toBe(
-      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_solveAll AsIs)',
-    );
+  it('solveAll default (all goals, no goalId)', () => {
+    expect(b().solveAll().raw).toBe('IOTCM "/Main.agda" NonInteractive Direct (Cmd_solveAll AsIs)');
   });
 
-  it('cmdSolveOne default', () => {
-    expect(cmdSolveOne('/Main.agda', 0).raw).toBe(
+  it('solveOne default', () => {
+    expect(b().solveOne(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_solveOne AsIs 0 noRange "")',
     );
   });
 
-  it('cmdGoalType default', () => {
-    expect(cmdGoalType('/Main.agda', 0).raw).toBe(
+  it('goalType default', () => {
+    expect(b().goalType(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_goal_type AsIs 0 noRange "")',
     );
   });
 
-  it('cmdGoalTypeContext default', () => {
-    expect(cmdGoalTypeContext('/Main.agda', 0).raw).toBe(
+  it('goalTypeContext default', () => {
+    expect(b().goalTypeContext(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_goal_type_context AsIs 0 noRange "")',
     );
   });
 
-  it('cmdInfer default', () => {
-    expect(cmdInfer('/Main.agda', 0).raw).toBe(
+  it('infer default', () => {
+    expect(b().infer(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_infer AsIs 0 noRange "")',
     );
   });
@@ -160,194 +128,251 @@ describe('IOTCM command builders', () => {
   // ---- escaping ----
 
   it('escapes special characters in content via JSON.stringify', () => {
-    const raw = cmdGive('/Main.agda', 2, 'a"b').raw;
+    const raw = b().give(2, 'a"b').raw;
     expect(raw).toContain('Cmd_give WithoutForce 2 noRange "a\\"b"');
   });
 
   it('escapes special characters in file paths', () => {
-    const raw = cmdLoad('/path with space.agda').raw;
+    const raw = b('/path with space.agda').load().raw;
     expect(raw).toContain('"/path with space.agda"');
   });
 
   // ---- module loading ----
 
-  it('cmdLoadNoMetas produces Cmd_load_no_metas', () => {
-    expect(cmdLoadNoMetas('/Main.agda').raw).toBe(
+  it('loadNoMetas produces Cmd_load_no_metas', () => {
+    expect(b().loadNoMetas().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_load_no_metas "/Main.agda")',
     );
   });
 
-  it('cmdLoadHighlightingInfo produces Cmd_load_highlighting_info', () => {
-    expect(cmdLoadHighlightingInfo('/Main.agda').raw).toBe(
+  it('loadHighlightingInfo produces Cmd_load_highlighting_info', () => {
+    expect(b().loadHighlightingInfo().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_load_highlighting_info "/Main.agda")',
     );
   });
 
   // ---- toplevel queries ----
 
-  it('cmdConstraints produces Cmd_constraints', () => {
-    expect(cmdConstraints('/Main.agda').raw).toBe(
+  it('constraints produces Cmd_constraints', () => {
+    expect(b().constraints().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_constraints)',
     );
   });
 
-  it('cmdShowModuleContentsToplevel default', () => {
-    expect(cmdShowModuleContentsToplevel('/Main.agda', 'Nat').raw).toBe(
+  it('showModuleContentsToplevel default', () => {
+    expect(b().showModuleContentsToplevel('Nat').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_show_module_contents_toplevel AsIs "Nat")',
     );
   });
 
-  it('cmdSearchAboutToplevel default', () => {
-    expect(cmdSearchAboutToplevel('/Main.agda', '+').raw).toBe(
+  it('searchAboutToplevel default', () => {
+    expect(b().searchAboutToplevel('+').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_search_about_toplevel AsIs "+")',
     );
   });
 
-  it('cmdWhyInScopeToplevel produces Cmd_why_in_scope_toplevel', () => {
-    expect(cmdWhyInScopeToplevel('/Main.agda', 'id').raw).toBe(
+  it('whyInScopeToplevel produces Cmd_why_in_scope_toplevel', () => {
+    expect(b().whyInScopeToplevel('id').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_why_in_scope_toplevel "id")',
     );
   });
 
-  it('cmdShowVersion produces Cmd_show_version', () => {
-    expect(cmdShowVersion('/Main.agda').raw).toBe(
+  it('showVersion produces Cmd_show_version', () => {
+    expect(b().showVersion().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_show_version)',
     );
   });
 
   // ---- goal inspection ----
 
-  it('cmdContext default', () => {
-    expect(cmdContext('/Main.agda', 0).raw).toBe(
+  it('context default', () => {
+    expect(b().context(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_context AsIs 0 noRange "")',
     );
   });
 
-  it('cmdShowModuleContents default', () => {
-    expect(cmdShowModuleContents('/Main.agda', 0).raw).toBe(
+  it('showModuleContents default', () => {
+    expect(b().showModuleContents(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_show_module_contents AsIs 0 noRange "")',
     );
   });
 
-  it('cmdWhyInScope default', () => {
-    expect(cmdWhyInScope('/Main.agda', 0, { expr: 'id' }).raw).toBe(
+  it('whyInScope default', () => {
+    expect(b().whyInScope(0, { expr: 'id' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_why_in_scope 0 noRange "id")',
     );
   });
 
-  it('cmdGoalTypeContextInfer default', () => {
-    expect(cmdGoalTypeContextInfer('/Main.agda', 0).raw).toBe(
+  it('goalTypeContextInfer default', () => {
+    expect(b().goalTypeContextInfer(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_goal_type_context_infer AsIs 0 noRange "")',
     );
   });
 
-  it('cmdGoalTypeContextCheck default', () => {
-    expect(cmdGoalTypeContextCheck('/Main.agda', 0).raw).toBe(
+  it('goalTypeContextCheck default', () => {
+    expect(b().goalTypeContextCheck(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_goal_type_context_check AsIs 0 noRange "")',
     );
   });
 
   // ---- goal solving ----
 
-  it('cmdRefine default', () => {
-    expect(cmdRefine('/Main.agda', 0, { expr: 'x' }).raw).toBe(
+  it('refine default', () => {
+    expect(b().refine(0, { expr: 'x' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_refine 0 noRange "x")',
     );
   });
 
-  it('cmdIntro default (pmLambda=false)', () => {
-    expect(cmdIntro('/Main.agda', 0).raw).toBe(
+  it('intro default (pmLambda=false)', () => {
+    expect(b().intro(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_intro False 0 noRange "")',
     );
   });
 
-  it('cmdIntro with pmLambda=true', () => {
-    expect(cmdIntro('/Main.agda', 1, { pmLambda: true }).raw).toBe(
+  it('intro with pmLambda=true', () => {
+    expect(b().intro(1, { pmLambda: true }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_intro True 1 noRange "")',
     );
   });
 
-  it('cmdRefineOrIntro default', () => {
-    expect(cmdRefineOrIntro('/Main.agda', 0).raw).toBe(
+  it('refineOrIntro default', () => {
+    expect(b().refineOrIntro(0).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_refine_or_intro False 0 noRange "")',
     );
   });
 
-  it('cmdElaborateGive default', () => {
-    expect(cmdElaborateGive('/Main.agda', 0, { expr: 'x' }).raw).toBe(
+  it('elaborateGive default', () => {
+    expect(b().elaborateGive(0, { expr: 'x' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_elaborate_give AsIs 0 noRange "x")',
     );
   });
 
-  it('cmdHelperFunction default', () => {
-    expect(cmdHelperFunction('/Main.agda', 0, { expr: 'x' }).raw).toBe(
+  it('helperFunction default', () => {
+    expect(b().helperFunction(0, { expr: 'x' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_helper_function AsIs 0 noRange "x")',
     );
   });
 
   // ---- highlighting ----
 
-  it('cmdTokenHighlighting default (Keep)', () => {
-    expect(cmdTokenHighlighting('/Main.agda', '/Tmp.agda').raw).toBe(
+  it('tokenHighlighting default (Keep)', () => {
+    expect(b().tokenHighlighting('/Tmp.agda').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_tokenHighlighting "/Tmp.agda" Keep)',
     );
   });
 
-  it('cmdTokenHighlighting with remove=true', () => {
-    expect(cmdTokenHighlighting('/Main.agda', '/Tmp.agda', { remove: true }).raw).toBe(
+  it('tokenHighlighting with remove=true', () => {
+    expect(b().tokenHighlighting('/Tmp.agda', { remove: true }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_tokenHighlighting "/Tmp.agda" Remove)',
     );
   });
 
-  it('cmdHighlight default', () => {
-    expect(cmdHighlight('/Main.agda', 0, { expr: 'x' }).raw).toBe(
+  it('highlight default', () => {
+    expect(b().highlight(0, { expr: 'x' }).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_highlight 0 noRange "x")',
     );
   });
 
   // ---- backend commands ----
 
-  it('cmdBackendTop produces Cmd_backend_top', () => {
-    expect(cmdBackendTop('/Main.agda', 'LaTeX', 'dump').raw).toBe(
+  it('backendTop produces Cmd_backend_top', () => {
+    expect(b().backendTop('LaTeX', 'dump').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_backend_top LaTeX "dump")',
     );
   });
 
-  it('cmdBackendHole default', () => {
-    expect(cmdBackendHole('/Main.agda', 0, 'LaTeX', 'dump').raw).toBe(
+  it('backendHole default', () => {
+    expect(b().backendHole(0, 'LaTeX', 'dump').raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (Cmd_backend_hole 0 noRange "" LaTeX "dump")',
     );
   });
 
   // ---- display toggles ----
 
-  it('cmdShowImplicitArgs True', () => {
-    expect(cmdShowImplicitArgs('/Main.agda', true).raw).toBe(
+  it('showImplicitArgs True', () => {
+    expect(b().showImplicitArgs(true).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (ShowImplicitArgs True)',
     );
   });
 
-  it('cmdShowImplicitArgs False', () => {
-    expect(cmdShowImplicitArgs('/Main.agda', false).raw).toBe(
+  it('showImplicitArgs False', () => {
+    expect(b().showImplicitArgs(false).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (ShowImplicitArgs False)',
     );
   });
 
-  it('cmdToggleImplicitArgs', () => {
-    expect(cmdToggleImplicitArgs('/Main.agda').raw).toBe(
+  it('toggleImplicitArgs', () => {
+    expect(b().toggleImplicitArgs().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (ToggleImplicitArgs)',
     );
   });
 
-  it('cmdShowIrrelevantArgs True', () => {
-    expect(cmdShowIrrelevantArgs('/Main.agda', true).raw).toBe(
+  it('showIrrelevantArgs True', () => {
+    expect(b().showIrrelevantArgs(true).raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (ShowIrrelevantArgs True)',
     );
   });
 
-  it('cmdToggleIrrelevantArgs', () => {
-    expect(cmdToggleIrrelevantArgs('/Main.agda').raw).toBe(
+  it('toggleIrrelevantArgs', () => {
+    expect(b().toggleIrrelevantArgs().raw).toBe(
       'IOTCM "/Main.agda" NonInteractive Direct (ToggleIrrelevantArgs)',
     );
+  });
+
+  // ---- builder options: highlighting level, rewrite mode, range ----
+
+  it('defaults the highlighting level to NonInteractive', () => {
+    expect(b().load().raw).toBe(
+      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_load "/Main.agda" [])',
+    );
+  });
+
+  it('exported highlighting-level consts', () => {
+    expect(HIGHLIGHTING_NONE).toBe('None');
+    expect(HIGHLIGHTING_NON_INTERACTIVE).toBe('NonInteractive');
+    expect(HIGHLIGHTING_INTERACTIVE).toBe('Interactive');
+  });
+
+  it('highlightingLevel option None suppresses highlighting level', () => {
+    expect(new CommandBuilder('/Main.agda', { highlightingLevel: 'None' }).load().raw).toBe(
+      'IOTCM "/Main.agda" None Direct (Cmd_load "/Main.agda" [])',
+    );
+  });
+
+  it('highlightingLevel option Interactive', () => {
+    expect(new CommandBuilder('/Main.agda', { highlightingLevel: 'Interactive' }).load().raw).toBe(
+      'IOTCM "/Main.agda" Interactive Direct (Cmd_load "/Main.agda" [])',
+    );
+  });
+
+  it('highlighting level threads through all methods', () => {
+    expect(
+      new CommandBuilder('/Main.agda', { highlightingLevel: 'None' }).give(0, 'true').raw,
+    ).toBe('IOTCM "/Main.agda" None Direct (Cmd_give WithoutForce 0 noRange "true")');
+    expect(
+      new CommandBuilder('/Main.agda', { highlightingLevel: 'Interactive' }).give(0, 'true', {
+        force: true,
+      }).raw,
+    ).toBe('IOTCM "/Main.agda" Interactive Direct (Cmd_give WithForce 0 noRange "true")');
+    expect(new CommandBuilder('/Main.agda', { highlightingLevel: 'None' }).exit().raw).toBe(
+      'IOTCM "/Main.agda" None Direct (Cmd_exit)',
+    );
+    expect(new CommandBuilder('/Main.agda', { highlightingLevel: 'Interactive' }).metas().raw).toBe(
+      'IOTCM "/Main.agda" Interactive Direct (Cmd_metas AsIs)',
+    );
+  });
+
+  it('rewriteMode option threads through methods that take one', () => {
+    expect(new CommandBuilder('/Main.agda', { rewriteMode: 'Normalised' }).metas().raw).toBe(
+      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_metas Normalised)',
+    );
+    expect(new CommandBuilder('/Main.agda', { rewriteMode: 'Instantiated' }).autoAll().raw).toBe(
+      'IOTCM "/Main.agda" NonInteractive Direct (Cmd_autoAll Instantiated)',
+    );
+  });
+
+  it('returns IOTCMCommand with a raw string', () => {
+    const cmd: IOTCMCommand = b().load();
+    expect(typeof cmd.raw).toBe('string');
   });
 });

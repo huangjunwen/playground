@@ -21,7 +21,7 @@
 import { WebWasiRunEnv } from '@playground/run-env/web';
 import { afterAll, beforeAll, bench } from 'vitest';
 import { DEFAULT_ALS_WORKSPACE } from '../../src/defaults';
-import { cmdLoad } from '../../src/protocol/commands';
+import { CommandBuilder } from '../../src/protocol/commands';
 import { type AlsHandle, runAls } from '../../src/run';
 import { expectLoadResult } from './expect-load';
 import { SOURCES } from './sources';
@@ -36,7 +36,7 @@ let runner: { env: WebWasiRunEnv; handle: AlsHandle };
 const loadOnce = (file: string): Promise<unknown> => {
   const path = `${DEFAULT_ALS_WORKSPACE}/${file}`;
   return Promise.race([
-    runner.handle.session.request(cmdLoad(path)),
+    runner.handle.session.request(new CommandBuilder(path).load()),
     new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`cmdLoad ${file} timed out (${COMMAND_TIMEOUT_MS}ms)`)),

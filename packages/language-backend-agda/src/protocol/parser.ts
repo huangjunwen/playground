@@ -7,6 +7,7 @@
  * Malformed input yields { kind: 'Unknown' }.
  */
 
+import type { Interval, Position, Range } from './range';
 import type {
   AgdaResponse,
   ConstraintObj,
@@ -17,10 +18,7 @@ import type {
   HighlightingAtom,
   HighlightingInfoDirect,
   InteractionPoint,
-  Interval,
   OutputConstraint,
-  Position,
-  Range,
   ResponseContextEntry,
   TCWarning,
 } from './responses';
