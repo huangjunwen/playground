@@ -1,7 +1,7 @@
 // Latency benchmarks: time from provider.write() until the chunk arrives at the
 // consumer (send→arrive).
 //
-// Run with:  pnpm --filter @playground/wasip1 test:bench   (vitest bench --run --project node)
+// Run with:  pnpm --filter @playground/wasip1 bench   (vitest bench --run --project node)
 //
 // Method for send→arrive: the consumer parks a reader BEFORE the write, so the
 // parked promise resolves the instant the chunk is delivered — the timed region

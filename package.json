@@ -10,9 +10,11 @@
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:node": "vitest run --project node",
-    "test:browser": "vitest run --project browser",
+    "test:web": "vitest run --project web",
     "test:watch": "vitest",
-    "test:bench": "vitest bench --run",
+    "bench": "vitest bench --run",
+    "bench:node": "vitest bench --run --project node",
+    "bench:web": "vitest bench --run --project web",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check",
     "lint:fix": "biome check --write"

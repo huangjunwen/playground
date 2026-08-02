@@ -2,7 +2,7 @@
 // two message hops). The server method resolves immediately, so each sample is a
 // pure round-trip.
 //
-// Run with:  pnpm --filter @playground/wasip1 test:bench   (vitest bench --run --project node)
+// Run with:  pnpm --filter @playground/wasip1 bench   (vitest bench --run --project node)
 
 import { bench } from 'vitest';
 import { createRpcClient, createRpcServer } from '../../src/ipc-mp';

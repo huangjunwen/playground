@@ -4,7 +4,7 @@
  * Execution model: spawn a Node subprocess running `node:wasi` via
  * `NodeWasiRunEnv` (spawning is required because `node:wasi`'s synchronous
  * `start(instance)` blocks the event loop forever for an LSP server). Browser
- * counterpart lives in `benchmark.web.bench.ts`.
+ * counterpart lives in `cmdLoad.bench-web.ts`.
  *
  * Measures warm round-trip time of `cmdLoad` for small/medium/large Agda
  * sources (see `./sources.ts`). `als --setup` runs once per workspace temp
@@ -15,7 +15,7 @@
  * `afterAll` but does NOT invoke hooks registered on a `describe` sub-suite —
  * wrapping in describe leaves `beforeAll` un-run and every bench errors (NaN).
  *
- * Run with:  pnpm --filter @playground/language-backend-agda test:bench:node
+ * Run with:  pnpm --filter @playground/language-backend-agda bench:node
  */
 
 import { mkdir, rm, writeFile } from 'node:fs/promises';

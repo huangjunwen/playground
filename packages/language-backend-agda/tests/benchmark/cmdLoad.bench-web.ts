@@ -8,9 +8,9 @@
  * extracted into the memory VFS during `als --setup`; the whole fs lives in
  * the worker's heap and dies when the worker terminates.
  *
- * Node counterpart: `benchmark.node.bench.ts`.
+ * Node counterpart: `cmdLoad.bench-node.ts`.
  *
- * Run with:  pnpm --filter @playground/language-backend-agda test:bench:web
+ * Run with:  pnpm --filter @playground/language-backend-agda bench:web
  *
  * NOTE: vitest's benchmark runner (`runBenchmarkSuite`) never invokes the
  * `beforeAll`/`afterAll` hooks of a `describe()` sub-suite — it only runs
