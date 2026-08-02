@@ -5,7 +5,9 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --root ../.. packages/lsp"
+    "test": "vitest run --root ../.. packages/lsp",
+    "test:node": "vitest run --root ../.. --project node packages/lsp",
+    "test:web": "vitest run --root ../.. --project web packages/lsp"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

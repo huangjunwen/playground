@@ -11,7 +11,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ../.. packages/run-env",
-    "bench": "vitest bench --run --root ../.. packages/run-env"
+    "test:node": "vitest run --root ../.. --project node packages/run-env",
+    "test:web": "vitest run --root ../.. --project web packages/run-env"
   },
   "dependencies": {
     "@playground/wasip1": "workspace:*"
