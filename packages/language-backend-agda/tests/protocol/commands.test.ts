@@ -375,4 +375,19 @@ describe('IOTCM command builders', () => {
     const cmd: IOTCMCommand = b().load();
     expect(typeof cmd.raw).toBe('string');
   });
+
+  // ---- kind derivation ----
+
+  it('carries the kind verbatim', () => {
+    expect(b().load().kind).toBe('Cmd_load');
+    expect(b().give(0, 'x').kind).toBe('Cmd_give');
+    expect(b().case(0, 'x').kind).toBe('Cmd_make_case');
+    expect(b().compute().kind).toBe('Cmd_compute');
+    expect(b().loadNoMetas().kind).toBe('Cmd_load_no_metas');
+  });
+
+  it('keeps unprefixed display toggles as-is', () => {
+    expect(b().showImplicitArgs(true).kind).toBe('ShowImplicitArgs');
+    expect(b().toggleIrrelevantArgs().kind).toBe('ToggleIrrelevantArgs');
+  });
 });

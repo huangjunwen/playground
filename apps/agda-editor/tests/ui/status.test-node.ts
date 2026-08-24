@@ -1,0 +1,79 @@
+/**
+ * Status cluster — every slot's projection: the backend lifecycle, the
+ * busy spinner, and the idle-only verdict.
+ *
+ */
+
+import { EditorState, type StateEffect } from '@codemirror/state';
+import { describe, expect, it } from 'vitest';
+import {
+  sessionModelField,
+  setBackendStatus,
+  setBusy,
+  setChecked,
+  setError,
+} from '../../src/model/session-model';
+import { statusCluster } from '../../src/ui/status';
+
+function makeState(effects: StateEffect<unknown>[] = []): EditorState {
+  let state = EditorState.create({ extensions: [sessionModelField] });
+  for (const e of effects) state = state.update({ effects: [e as never] }).state;
+  return state;
+}
+
+describe('backend slot', () => {
+  it('tracks the lifecycle: booting → online → exited (code)', () => {
+    expect(statusCluster(makeState()).backend).toEqual({ label: 'booting', tone: 'booting' });
+    expect(statusCluster(makeState([setBackendStatus.of({ state: 'online' })])).backend).toEqual({
+      label: 'online',
+      tone: 'online',
+    });
+    expect(
+      statusCluster(makeState([setBackendStatus.of({ state: 'exited', code: 1 })])).backend,
+    ).toEqual({ label: 'exited (1)', tone: 'exited' });
+  });
+
+  it('an exit is visible even mid-command — it masks nothing else', () => {
+    const cluster = statusCluster(
+      makeState([setBackendStatus.of({ state: 'exited', code: 1 }), setBusy.of(true)]),
+    );
+    expect(cluster.backend).toEqual({ label: 'exited (1)', tone: 'exited' });
+    expect(cluster.busy).toBe(true);
+  });
+});
+
+describe('busy slot', () => {
+  it('mirrors the session busy flag', () => {
+    expect(statusCluster(makeState()).busy).toBe(false);
+    expect(statusCluster(makeState([setBusy.of(true)])).busy).toBe(true);
+  });
+});
+
+describe('verdict slot (idle only, shown only when worth it)', () => {
+  it('is absent by default (never loaded / stale renders nothing)', () => {
+    expect(statusCluster(makeState()).verdict).toBeUndefined();
+  });
+
+  it('is error when the session holds an error', () => {
+    expect(
+      statusCluster(makeState([setError.of('Main.agda:1.1: parse error\ncontext')])).verdict,
+    ).toEqual({
+      kind: 'error',
+    });
+  });
+
+  it('is checked after a clean load — unsolved goals do not clear it', () => {
+    // Status.checked is agda's no-error verdict; unsolved goals stay
+    // visible in the goals panel (checked + empty panel = All Done).
+    expect(statusCluster(makeState([setChecked.of(true)])).verdict).toEqual({ kind: 'checked' });
+  });
+
+  it('is absent while busy — a running command has no verdict yet', () => {
+    expect(
+      statusCluster(makeState([setBusy.of(true), setError.of('boom')])).verdict,
+    ).toBeUndefined();
+    expect(
+      statusCluster(makeState([setBusy.of(true), setChecked.of(true)])).verdict,
+    ).toBeUndefined();
+  });
+});

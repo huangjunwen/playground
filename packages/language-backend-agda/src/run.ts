@@ -33,9 +33,20 @@ export interface AlsRunOptions {
   home?: string;
   /** Extra env vars merged over the runner defaults (Agda_datadir, HOME). */
   env?: Record<string, string>;
-  /** Wrap the base transport before the LspClient is constructed. */
+  /** Wrap the base transport before the LspClient is constructed — the only
+   *  vantage point that also sees the initialize handshake frames themselves. */
   onCreateLspTransport?: LspTransportMiddleware;
-  /** Runs after the handle is built but before the initialize handshake. */
+  /**
+   * Runs after the handle is built but before the initialize handshake.
+   *
+   * This is the earliest moment the live process is reachable, and the last
+   * chance to subscribe before handshake traffic flows: the LspClient
+   * dispatches to current subscribers without buffering, so notifications
+   * sent during initialize are silently dropped and server requests are
+   * answered with `MethodNotFound` if no handler is registered in time.
+   * Use it to attach `onServerNotification`/`onServerRequest` listeners
+   * via `handle.session`.
+   */
   onSetup?: (handle: AlsHandle) => void;
   /**
    * Absolute workspace path in the env fs (e.g. '/root/workspace'). Drives the
@@ -95,6 +106,8 @@ export async function runAls(runEnv: RunEnv, opts: AlsRunOptions = {}): Promise<
     exit: mainHandle.exit,
     log: mainHandle.stderr,
   };
+  // Last pre-handshake hook: listeners must be attached here or they miss
+  // everything the server sends during initialize (see AlsRunOptions.onSetup).
   onSetup?.(handle);
   await lspClient.start({
     rootUri: `file://${lspWorkspace}`,

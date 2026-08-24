@@ -26,6 +26,8 @@ import { type Range, serializeRange } from './range';
 
 export interface IOTCMCommand {
   raw: string;
+  /** Command name, verbatim: 'Cmd_load', 'Cmd_give', or a display toggle such as 'ShowImplicitArgs'. */
+  kind: string;
 }
 
 /** Options shared across every command of a `CommandBuilder`. */
@@ -51,10 +53,17 @@ export class CommandBuilder {
     this.rewriteMode = options.rewriteMode ?? REWRITE_AS_IS;
   }
 
-  /** Wrap a command payload inside the IOTCM envelope. */
-  private iotcm(cmd: string): IOTCMCommand {
+  /**
+   * Wrap a command inside the IOTCM envelope. `kind` is the command name,
+   * verbatim ('Cmd_load', or a display toggle like 'ShowImplicitArgs');
+   * `args` is the rest of the payload, already in wire format.
+   */
+  private iotcm(kind: string, args = ''): IOTCMCommand {
     const path = JSON.stringify(this.filePath);
-    return { raw: `IOTCM ${path} ${this.highlightingLevel} Direct (${cmd})` };
+    return {
+      raw: `IOTCM ${path} ${this.highlightingLevel} Direct (${kind}${args ? ` ${args}` : ''})`,
+      kind,
+    };
   }
 
   /** Load a .agda file and type-check it. Sends AllGoalsWarnings + highlighting + Status. */
@@ -62,25 +71,25 @@ export class CommandBuilder {
     // Cmd_load requires a JSON-quoted path as argument (separate from the
     // IOTCM envelope path, which is also JSON-quoted by the iotcm helper).
     const path = JSON.stringify(this.filePath);
-    return this.iotcm(`Cmd_load ${path} []`);
+    return this.iotcm('Cmd_load', `${path} []`);
   }
 
   /** List all unsolved goals. Sends AllGoalsWarnings. */
   metas(): IOTCMCommand {
-    return this.iotcm(`Cmd_metas ${this.rewriteMode}`);
+    return this.iotcm('Cmd_metas', this.rewriteMode);
   }
 
   /** Fill a goal with an expression. Sends GiveAction + AllGoalsWarnings. */
   give(goalId: number, content: string, opts?: { force?: boolean; range?: Range }): IOTCMCommand {
     const force = opts?.force ? FORCE_WITH : FORCE_WITHOUT;
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_give ${force} ${goalId} ${range} ${JSON.stringify(content)}`);
+    return this.iotcm('Cmd_give', `${force} ${goalId} ${range} ${JSON.stringify(content)}`);
   }
 
   /** Case-split on a variable in a goal. Sends MakeCase (variant 'Function' or 'ExtendedLambda'). */
   case(goalId: number, content: string, opts?: { range?: Range }): IOTCMCommand {
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_make_case ${goalId} ${range} ${JSON.stringify(content)}`);
+    return this.iotcm('Cmd_make_case', `${goalId} ${range} ${JSON.stringify(content)}`);
   }
 
   /** Evaluate/normalise an expression in a goal's context. Sends GoalSpecific (NormalForm). */
@@ -92,9 +101,9 @@ export class CommandBuilder {
     const mode = opts?.computeMode ?? COMPUTE_DEFAULT;
     if (goalId !== undefined && expr !== undefined) {
       const range = serializeRange(opts?.range ?? []);
-      return this.iotcm(`Cmd_compute ${mode} ${goalId} ${range} ${JSON.stringify(expr)}`);
+      return this.iotcm('Cmd_compute', `${mode} ${goalId} ${range} ${JSON.stringify(expr)}`);
     }
-    return this.iotcm(`Cmd_compute ${mode}`);
+    return this.iotcm('Cmd_compute', mode);
   }
 
   /** Abort the currently running command. Intercepted by readCommands; sends no response of its own. */
@@ -106,17 +115,20 @@ export class CommandBuilder {
   autoOne(goalId: number, opts?: { expr?: string; range?: Range }): IOTCMCommand {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_autoOne ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm(
+      'Cmd_autoOne',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+    );
   }
 
   /** Mimer proof search on all goals. Sends one GiveAction per solved goal. */
   autoAll(): IOTCMCommand {
-    return this.iotcm(`Cmd_autoAll ${this.rewriteMode}`);
+    return this.iotcm('Cmd_autoAll', this.rewriteMode);
   }
 
   /** Report the internal instantiation solutions of all goals. Sends SolveAll. */
   solveAll(): IOTCMCommand {
-    return this.iotcm(`Cmd_solveAll ${this.rewriteMode}`);
+    return this.iotcm('Cmd_solveAll', this.rewriteMode);
   }
 
   /** Report the internal instantiation solution of a single goal. Sends SolveAll (empty [] if uninstantiated). */
@@ -124,7 +136,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_solveOne ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_solveOne',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -133,7 +146,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_goal_type ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_goal_type',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -142,7 +156,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_goal_type_context ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_goal_type_context',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -150,7 +165,8 @@ export class CommandBuilder {
   infer(goalId: number, expr?: string, opts?: { range?: Range }): IOTCMCommand {
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_infer ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr ?? '')}`,
+      'Cmd_infer',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr ?? '')}`,
     );
   }
 
@@ -166,18 +182,18 @@ export class CommandBuilder {
   compile(backend: string, args: string[] = []): IOTCMCommand {
     const path = JSON.stringify(this.filePath);
     const argsStr = args.length > 0 ? ` [${args.map(a => JSON.stringify(a)).join(', ')}]` : ' []';
-    return this.iotcm(`Cmd_compile ${backend} ${path}${argsStr}`);
+    return this.iotcm('Cmd_compile', `${backend} ${path}${argsStr}`);
   }
 
   /** Infer the type of an expression at the top level (not inside a goal). Sends InferredType. */
   inferToplevel(expr: string): IOTCMCommand {
-    return this.iotcm(`Cmd_infer_toplevel ${this.rewriteMode} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_infer_toplevel', `${this.rewriteMode} ${JSON.stringify(expr)}`);
   }
 
   /** Evaluate/normalise an expression at the top level (not inside a goal). Sends NormalForm. */
   computeToplevel(expr: string, opts?: { computeMode?: ComputeMode }): IOTCMCommand {
     const mode = opts?.computeMode ?? COMPUTE_DEFAULT;
-    return this.iotcm(`Cmd_compute_toplevel ${mode} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_compute_toplevel', `${mode} ${JSON.stringify(expr)}`);
   }
 
   // ---- Module loading ----
@@ -185,13 +201,13 @@ export class CommandBuilder {
   /** Load a file and fail (__IMPOSSIBLE__) if there are any unsolved metas. Sends Status + End on success. */
   loadNoMetas(): IOTCMCommand {
     const path = JSON.stringify(this.filePath);
-    return this.iotcm(`Cmd_load_no_metas ${path}`);
+    return this.iotcm('Cmd_load_no_metas', path);
   }
 
   /** Load cached highlighting info for an already-visited module. Sends HighlightingInfo (or nothing). */
   loadHighlightingInfo(): IOTCMCommand {
     const path = JSON.stringify(this.filePath);
-    return this.iotcm(`Cmd_load_highlighting_info ${path}`);
+    return this.iotcm('Cmd_load_highlighting_info', path);
   }
 
   // ---- Toplevel queries ----
@@ -204,18 +220,19 @@ export class CommandBuilder {
   /** List all top-level names in a module with their types. Sends ModuleContents; empty name browses all. */
   showModuleContentsToplevel(name: string): IOTCMCommand {
     return this.iotcm(
-      `Cmd_show_module_contents_toplevel ${this.rewriteMode} ${JSON.stringify(name)}`,
+      'Cmd_show_module_contents_toplevel',
+      `${this.rewriteMode} ${JSON.stringify(name)}`,
     );
   }
 
   /** Search top-level names whose type mentions the given identifiers. Sends SearchAbout. */
   searchAboutToplevel(query: string): IOTCMCommand {
-    return this.iotcm(`Cmd_search_about_toplevel ${this.rewriteMode} ${JSON.stringify(query)}`);
+    return this.iotcm('Cmd_search_about_toplevel', `${this.rewriteMode} ${JSON.stringify(query)}`);
   }
 
   /** Explain why a name is in scope at the top level. Sends WhyInScope. */
   whyInScopeToplevel(name: string): IOTCMCommand {
-    return this.iotcm(`Cmd_why_in_scope_toplevel ${JSON.stringify(name)}`);
+    return this.iotcm('Cmd_why_in_scope_toplevel', JSON.stringify(name));
   }
 
   /** Display the running Agda version. Sends Version. */
@@ -229,7 +246,10 @@ export class CommandBuilder {
   context(goalId: number, opts?: { expr?: string; range?: Range }): IOTCMCommand {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_context ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm(
+      'Cmd_context',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+    );
   }
 
   /** List module contents within a goal's scope. Sends ModuleContents; empty name browses all. */
@@ -237,7 +257,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_show_module_contents ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_show_module_contents',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -245,7 +266,7 @@ export class CommandBuilder {
   whyInScope(goalId: number, opts?: { expr?: string; range?: Range }): IOTCMCommand {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_why_in_scope ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_why_in_scope', `${goalId} ${range} ${JSON.stringify(expr)}`);
   }
 
   /** Show goal type + context and infer the type of an expression. Sends GoalSpecific (GoalType, typeAux GoalAndHave). */
@@ -253,7 +274,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_goal_type_context_infer ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_goal_type_context_infer',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -262,7 +284,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_goal_type_context_check ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_goal_type_context_check',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -272,7 +295,7 @@ export class CommandBuilder {
   refine(goalId: number, opts?: { expr?: string; range?: Range }): IOTCMCommand {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_refine ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_refine', `${goalId} ${range} ${JSON.stringify(expr)}`);
   }
 
   /** Intro tactic: introduce a variable or constructor into a goal. Sends GiveAction. */
@@ -280,7 +303,7 @@ export class CommandBuilder {
     const pmLambda = opts?.pmLambda ? 'True' : 'False';
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_intro ${pmLambda} ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_intro', `${pmLambda} ${goalId} ${range} ${JSON.stringify(expr)}`);
   }
 
   /** If the expression is non-empty, refine; otherwise intro. Sends GiveAction. */
@@ -291,7 +314,10 @@ export class CommandBuilder {
     const pmLambda = opts?.pmLambda ? 'True' : 'False';
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_refine_or_intro ${pmLambda} ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm(
+      'Cmd_refine_or_intro',
+      `${pmLambda} ${goalId} ${range} ${JSON.stringify(expr)}`,
+    );
   }
 
   /** Elaborated give: fill a goal and return the elaborated term. Sends GiveAction + DisplayInfo. */
@@ -299,7 +325,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_elaborate_give ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_elaborate_give',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -308,7 +335,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_helper_function ${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
+      'Cmd_helper_function',
+      `${this.rewriteMode} ${goalId} ${range} ${JSON.stringify(expr)}`,
     );
   }
 
@@ -318,21 +346,21 @@ export class CommandBuilder {
   tokenHighlighting(source: string, opts?: { remove?: boolean }): IOTCMCommand {
     const remove = opts?.remove ? REMOVE_FILE : KEEP_FILE;
     const src = JSON.stringify(source);
-    return this.iotcm(`Cmd_tokenHighlighting ${src} ${remove}`);
+    return this.iotcm('Cmd_tokenHighlighting', `${src} ${remove}`);
   }
 
   /** Compute highlighting for an expression just spliced into a goal. Sends HighlightingInfo (KeepHighlighting). */
   highlight(goalId: number, opts?: { expr?: string; range?: Range }): IOTCMCommand {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
-    return this.iotcm(`Cmd_highlight ${goalId} ${range} ${JSON.stringify(expr)}`);
+    return this.iotcm('Cmd_highlight', `${goalId} ${range} ${JSON.stringify(expr)}`);
   }
 
   // ---- Backend commands ----
 
   /** Custom top-level command for a backend. Sends End (no-op) when no backend is registered. */
   backendTop(backend: string, payload: string): IOTCMCommand {
-    return this.iotcm(`Cmd_backend_top ${backend} ${JSON.stringify(payload)}`);
+    return this.iotcm('Cmd_backend_top', `${backend} ${JSON.stringify(payload)}`);
   }
 
   /** Custom hole-level command for a backend. Sends End (no-op) when no backend is registered. */
@@ -345,7 +373,8 @@ export class CommandBuilder {
     const expr = opts?.expr ?? '';
     const range = serializeRange(opts?.range ?? []);
     return this.iotcm(
-      `Cmd_backend_hole ${goalId} ${range} ${JSON.stringify(expr)} ${backend} ${JSON.stringify(payload)}`,
+      'Cmd_backend_hole',
+      `${goalId} ${range} ${JSON.stringify(expr)} ${backend} ${JSON.stringify(payload)}`,
     );
   }
 
@@ -353,7 +382,7 @@ export class CommandBuilder {
 
   /** Set whether implicit arguments are displayed. Sends Status + End. */
   showImplicitArgs(show: boolean): IOTCMCommand {
-    return this.iotcm(`ShowImplicitArgs ${show ? 'True' : 'False'}`);
+    return this.iotcm('ShowImplicitArgs', show ? 'True' : 'False');
   }
 
   /** Toggle display of implicit arguments. Sends Status + End. */
@@ -363,7 +392,7 @@ export class CommandBuilder {
 
   /** Set whether irrelevant arguments are displayed. Sends Status + End. */
   showIrrelevantArgs(show: boolean): IOTCMCommand {
-    return this.iotcm(`ShowIrrelevantArgs ${show ? 'True' : 'False'}`);
+    return this.iotcm('ShowIrrelevantArgs', show ? 'True' : 'False');
   }
 
   /** Toggle display of irrelevant arguments. Sends Status + End. */
