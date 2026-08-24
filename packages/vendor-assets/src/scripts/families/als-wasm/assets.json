@@ -1,10 +1,5 @@
 {
   "v6": {
-    "raw": {
-      "filename": "als-2.8.0.wasm",
-      "sha256": "3cb87a587637a27080e26ade6f342338e066e6a7e7f30f59b2e1f7a62b9fa2ce",
-      "sizeBytes": 91914049
-    },
     "opt": {
       "filename": "als-2.8.0-opt.wasm",
       "sha256": "42822b6c6f9cc3171f6f38b03b71e685f764325b2767cc16d9cbe74eed94941f",

@@ -76,11 +76,10 @@ const _assets = import.meta.glob('./scripts/families/*/assets.json', {
   import: 'default',
 }) as Record<string, Record<string, Record<string, AssetEntry>>>;
 
-// Only the optimized variant enters the browser bundle: the unoptimized
-// wasm is never fetched at runtime, so globbing it in would ship ~92MB of
-// dead weight to every client (and to the PWA precache). Node-side callers
-// reach raw files through resolveAssetPath instead.
-const _urls = import.meta.glob('../vendor/*/*/*-opt.wasm', {
+// Everything vendored under vendor/<family>/<version>/ is a shippable asset
+// (the ensure scripts keep build intermediates out of vendor/), so the whole
+// tree is globbed into the bundle.
+const _urls = import.meta.glob('../vendor/*/*/*', {
   eager: true,
   query: '?url',
   import: 'default',

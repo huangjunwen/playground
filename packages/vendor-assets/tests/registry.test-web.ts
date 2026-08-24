@@ -5,5 +5,5 @@ test('resolveAssetUrl works in the browser build pipeline', () => {
   const opt = resolveAssetUrl('als-wasm', 'opt', 'v6');
   expect(typeof opt).toBe('string');
   expect(opt.length).toBeGreaterThan(0);
-  expect(() => resolveAssetUrl('als-wasm', 'raw', 'v6')).toThrow(/No vendored file/);
+  expect(() => resolveAssetUrl('als-wasm', 'raw', 'v6')).toThrow(/Unknown vendor-assets asset/);
 });

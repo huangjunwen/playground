@@ -3,7 +3,7 @@
 // Reads build params, writes output files into `outDir`, and returns
 // a minimal asset descriptor map — no checksums here; the dispatcher
 // handles SHA-256 calculation and assets.json recording.
-import { stat } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { ensureBinaryen, runWasmOpt } from '../../helpers/binaryen.mjs';
 import { curl } from '../../helpers/curl.mjs';
@@ -31,32 +31,33 @@ export async function ensureVersion(params, { outDir }) {
   if (!agdaVersion) throw new Error('als-wasm requires agdaVersion');
   if (!binaryenVersion) throw new Error('als-wasm requires binaryenVersion');
 
-  const rawFile = `als-${agdaVersion}.wasm`;
   const optFile = `als-${agdaVersion}-opt.wasm`;
-  const rawPath = resolve(outDir, rawFile);
   const optPath = resolve(outDir, optFile);
 
-  // 1. Ensure raw file exists.
-  if (await fileExists(rawPath)) {
-    console.log(`raw wasm already present: ${rawFile}`);
-  } else {
+  if (await fileExists(optPath)) {
+    console.log(`opt wasm already present: ${optFile}`);
+    return { opt: { filename: optFile } };
+  }
+
+  // The raw upstream wasm is a build-time intermediate only: download and
+  // optimize from a scratch dir so the ~90MB unoptimized binary never lands
+  // in vendor/ (everything under vendor/<family>/<version>/ ships to
+  // browsers via the registry's url glob).
+  const scratchDir = resolve(outDir, '..', '..', '.scratch');
+  await mkdir(scratchDir, { recursive: true });
+  const rawPath = resolve(scratchDir, `als-${agdaVersion}.wasm`);
+  if (!(await fileExists(rawPath))) {
     console.log(`downloading raw wasm: ${url}`);
     curl(url, rawPath);
   }
 
-  // 2. Ensure opt file exists.
-  if (await fileExists(optPath)) {
-    console.log(`opt wasm already present: ${optFile}`);
-  } else {
-    console.log(`ensuring binaryen ${binaryenVersion}...`);
-    const wasmOpt = await ensureBinaryen(resolve(outDir, '..', '..', '.binaryen'), binaryenVersion);
-    console.log(`optimizing: wasm-opt -Oz`);
-    runWasmOpt(wasmOpt, '-Oz', rawPath, optPath);
-  }
+  console.log(`ensuring binaryen ${binaryenVersion}...`);
+  const wasmOpt = await ensureBinaryen(resolve(outDir, '..', '..', '.binaryen'), binaryenVersion);
+  console.log('optimizing: wasm-opt -Oz');
+  runWasmOpt(wasmOpt, '-Oz', rawPath, optPath);
 
-  console.log(`OK: built 2 assets`);
-  return {
-    raw: { filename: rawFile },
-    opt: { filename: optFile },
-  };
+  await rm(scratchDir, { recursive: true, force: true });
+
+  console.log('OK: built 1 asset');
+  return { opt: { filename: optFile } };
 }
