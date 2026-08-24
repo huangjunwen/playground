@@ -32,11 +32,11 @@ test('unknown family / asset throws', () => {
   expect(() => getAssetInfo('als-wasm', 'debug')).toThrow(/Unknown vendor-assets asset/);
 });
 
-test('resolveAssetUrl returns a non-empty URL for raw + opt', () => {
-  const raw = resolveAssetUrl('als-wasm', 'raw');
+test('resolveAssetUrl serves the optimized wasm; raw has no URL', () => {
   const opt = resolveAssetUrl('als-wasm', 'opt');
-  expect(typeof raw).toBe('string');
-  expect(raw.length).toBeGreaterThan(0);
   expect(typeof opt).toBe('string');
   expect(opt.length).toBeGreaterThan(0);
+  // The raw (unoptimized) variant is not globbed into the bundle — node-side
+  // callers use resolveAssetPath.
+  expect(() => resolveAssetUrl('als-wasm', 'raw')).toThrow(/No vendored file/);
 });

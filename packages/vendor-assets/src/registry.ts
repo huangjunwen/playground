@@ -57,7 +57,11 @@ export function resolveAssetUrl(family: string, asset: string, version?: string)
 export function resolveAssetPath(family: string, asset: string, version?: string): string {
   const info = getAssetInfo(family, asset, version);
   const v = version ?? _defaults[family]!;
-  return new URL(`../vendor/${family}/${v}/${info.filename}`, import.meta.url).pathname;
+  // Deliberately not inlined into `new URL(...)`: vite's asset-import-meta-url
+  // plugin turns `new URL(\`../vendor/${...}\`, import.meta.url)` into a glob
+  // over every vendored file, shipping the 92MB unoptimized wasm to browsers.
+  const rel = `../vendor/${family}/${v}/${info.filename}`;
+  return new URL(rel, import.meta.url).pathname;
 }
 
 // ---- internal --------------------------------------------------------------
@@ -72,7 +76,11 @@ const _assets = import.meta.glob('./scripts/families/*/assets.json', {
   import: 'default',
 }) as Record<string, Record<string, Record<string, AssetEntry>>>;
 
-const _urls = import.meta.glob('../vendor/*/*/*', {
+// Only the optimized variant enters the browser bundle: the unoptimized
+// wasm is never fetched at runtime, so globbing it in would ship ~92MB of
+// dead weight to every client (and to the PWA precache). Node-side callers
+// reach raw files through resolveAssetPath instead.
+const _urls = import.meta.glob('../vendor/*/*/*-opt.wasm', {
   eager: true,
   query: '?url',
   import: 'default',

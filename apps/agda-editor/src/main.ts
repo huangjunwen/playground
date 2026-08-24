@@ -108,7 +108,25 @@ sessionPanel.update(view.state);
 // LSP wire events: every LSP frame both ways, plus each server error-stream
 // line, lands in the observability log — commands only narrate what the
 // wire cannot know (sync/stream elapse, failures, results).
+// ALS runs under WebAssembly JSPI (WebAssembly.promising / Suspending),
+// which is absent on iOS Safari — fail early with a clear reason instead of
+// an opaque boot error.
+const wasmJspi =
+  (globalThis.WebAssembly as unknown as { promising?: unknown; Suspending?: unknown })
+    .promising !== undefined &&
+  (globalThis.WebAssembly as unknown as { promising?: unknown; Suspending?: unknown })
+    .Suspending !== undefined;
+
+// Ask for persistent storage: the precache (~30 MB) must survive browser
+// storage pressure for the app to stay usable offline.
+if (navigator.storage?.persist !== undefined) void navigator.storage.persist();
+
 function bootBackend(): void {
+  if (!wasmJspi) {
+    view.dispatch(backendExitTransaction(1));
+    console.error('ALS boot failed: this browser does not support WebAssembly JSPI (Chrome 137+, Firefox 153+, Safari 27+).');
+    return;
+  }
   view.dispatch(backendBootingTransaction());
   Backend.create({
     onLspFrame: (outgoing, msg) => view.dispatch(lspFrameEvent(outgoing, msg)),
