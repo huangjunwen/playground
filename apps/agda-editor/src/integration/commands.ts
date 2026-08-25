@@ -175,14 +175,25 @@ export class ExecuteContext {
     this.dispatch(appendEventTransaction(level, `${command.kind}::${kind}`, payload));
   }
 
-  /** Write the view's document to the virtual fs. */
-  syncToVfs(): Promise<void> {
-    return this.backend.syncToVfs(this.filePath, this.docText);
-  }
-
-  /** Stream one command's responses as they arrive (ends at the end marker). */
-  stream(cmd: IOTCMCommand): AsyncGenerator<AgdaResponse> {
-    return this.backend.stream(cmd);
+  /**
+   * Write the view's document to the virtual fs — the one vfs-write path,
+   * shared by every explicit save and every command's pre-flight sync.
+   * Times the write and narrates it as `fs::sync`: info + elapse on
+   * success, error + message on failure. Never throws; returns whether
+   * the write landed.
+   */
+  async syncToVfs(): Promise<boolean> {
+    const startTs = performance.now();
+    try {
+      await this.backend.syncToVfs(this.filePath, this.docText);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.dispatch(appendEventTransaction('error', 'fs::sync', { error }));
+      return false;
+    }
+    const elapse = formatElapse(performance.now() - startTs);
+    this.dispatch(appendEventTransaction('info', 'fs::sync', { elapse }));
+    return true;
   }
 
   /**
@@ -201,9 +212,11 @@ export class ExecuteContext {
    * responses declares an End handler instead of hooking around the call.
    *
    * The runner narrates the command into the observability log, scoped by
-   * the command's kind: `<Cmd>::syncEnd` (info, sync elapse) and
-   * `<Cmd>::cmdEnd` (info, stream elapse). Wire frames themselves are
-   * tapped at the backend layer, not re-logged here.
+   * the command's kind: `<Cmd>::cmdEnd` (info, stream elapse); the sync
+   * narrates itself as the shared `fs::sync` event (the same write an
+   * explicit save performs), and a failed sync skips the stream (a stale
+   * vfs must not run the command). Wire frames themselves
+   * are tapped at the backend layer, not re-logged here.
    */
   async executeCommand(cmd: IOTCMCommand, handlers?: ResponseHandlers): Promise<void> {
     // Every command shares the error carrier: DisplayInfo.Error. It lands in
@@ -222,18 +235,20 @@ export class ExecuteContext {
 
     this.dispatch(commandStartTransaction());
 
-    const syncStartTs = performance.now();
-    await this.syncToVfs();
+    const synced = await this.syncToVfs();
+    if (!synced) {
+      // Close the session (busy off); the document was never checked.
+      this.dispatch(commandEndTransaction());
+      return;
+    }
 
-    const syncEndTs = performance.now();
-    this.logCommandEvent(cmd, 'info', 'syncEnd', { elapse: formatElapse(syncEndTs - syncStartTs) });
-
-    for await (const resp of this.stream(cmd)) {
+    const cmdStartTs = performance.now();
+    for await (const resp of this.backend.stream(cmd)) {
       dispatchCommon(resp);
       dispatchUser(resp);
     }
     const cmdEndTs = performance.now();
-    this.logCommandEvent(cmd, 'info', 'cmdEnd', { elapse: formatElapse(cmdEndTs - syncEndTs) });
+    this.logCommandEvent(cmd, 'info', 'cmdEnd', { elapse: formatElapse(cmdEndTs - cmdStartTs) });
 
     this.dispatch(commandEndTransaction());
   }

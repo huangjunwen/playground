@@ -2,13 +2,14 @@
  * Goal keymap — the editor-side halves of the commands: read the cursor
  * and goal model, then either call the command layer (load/give, via a
  * lazy ExecuteContext — the backend boots async) or move the selection
- * (next goal). Pure state math (goal under cursor, interior text, next
- * target) lives in exported functions so node tests cover it without a
- * transport.
+ * (next/previous goal). Pure state math (goal under cursor, interior
+ * text, next/previous target) lives in exported functions so node
+ * tests cover it without a transport; the bindings themselves live in
+ * app-keymap / the palette.
  */
 
 import type { EditorState } from '@codemirror/state';
-import type { Command, KeyBinding } from '@codemirror/view';
+import type { Command } from '@codemirror/view';
 import { EditorView } from '@codemirror/view';
 import { type ExecuteContext, executeGive, executeLoad } from '../integration/commands';
 import { type GoalRecord, getGoals, goalAt, HOLE_BOUNDARY } from '../model/goal-model';
@@ -41,6 +42,24 @@ export function nextGoalRange(
   const visible = goals.filter(g => g.to > g.from).sort((a, b) => a.from - b.from);
   if (visible.length === 0) return undefined;
   const target = visible.find(g => g.from >= head) ?? visible[0]!;
+  return { id: target.id, from: target.from, to: target.to };
+}
+
+/**
+ * Where `previous goal` moves the cursor: the last visible goal that
+ * ends at or before the cursor, wrapping to the last one.
+ */
+export function prevGoalRange(
+  goals: GoalRecord[],
+  head: number,
+): { from: number; to: number; id: number } | undefined {
+  const visible = goals.filter(g => g.to > g.from).sort((a, b) => a.from - b.from);
+  if (visible.length === 0) return undefined;
+  let target = visible[visible.length - 1]!;
+  for (const g of visible) {
+    if (g.to > head) break;
+    target = g;
+  }
   return { id: target.id, from: target.from, to: target.to };
 }
 
@@ -89,11 +108,15 @@ export const nextGoalCommand: Command = view => {
   return true;
 };
 
-/** Agda-style bindings; C-c chords pending inside CM6's keymap. */
-export function goalKeymap(getCtx: CtxAccessor): KeyBinding[] {
-  return [
-    { key: 'C-c C-l', run: loadCommand(getCtx) },
-    { key: 'C-c C-Space', run: giveFromCursorCommand(getCtx) },
-    { key: 'C-c C-f', run: nextGoalCommand },
-  ];
-}
+/** Select the previous goal's hole interior and scroll it into view. */
+export const prevGoalCommand: Command = view => {
+  const target = prevGoalRange(getGoals(view.state), view.state.selection.main.head);
+  if (target === undefined) return false;
+  const cursor = target.from + HOLE_BOUNDARY;
+  view.dispatch({
+    selection: { anchor: cursor },
+    scrollIntoView: true,
+    effects: EditorView.scrollIntoView(target.from, { y: 'center' }),
+  });
+  return true;
+};

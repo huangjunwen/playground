@@ -14,6 +14,7 @@
   --pv-str: #a40e26;
   --pv-num: #0550ae;
   --pv-bool: #cf222e;
+  --tok-qualifier: #953800;
   --selection: rgba(9, 105, 218, 0.15);
   --active-line: rgba(125, 133, 144, 0.08);
   --goal-hole-bg: rgba(255, 223, 105, 0.35);
@@ -42,6 +43,7 @@
     --pv-str: #ffa657;
     --pv-num: #79c0ff;
     --pv-bool: #ff7b72;
+    --tok-qualifier: #ffa657;
     --selection: rgba(88, 166, 255, 0.25);
     --active-line: rgba(110, 118, 129, 0.1);
     --goal-hole-bg: rgba(175, 132, 25, 0.25);
@@ -105,31 +107,52 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel-bg);
+  justify-content: space-between;
+  padding: 4px 10px;
 }
 
-.toolbar button {
-  font: inherit;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
+.toolbar-title {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  user-select: none;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
+  background: none;
+  color: var(--muted);
   cursor: pointer;
 }
 
-.toolbar button:disabled {
-  opacity: 0.5;
-  cursor: default;
+.toolbar-icon svg {
+  width: 15px;
+  height: 15px;
 }
 
-.toolbar kbd {
-  font-size: 0.75em;
-  color: var(--muted);
-  margin-left: 4px;
+.toolbar-icon:hover {
+  color: var(--fg);
+  background: var(--active-line);
+}
+
+/* A toggle button reads as on while its panel is visible. */
+.toolbar-icon.on {
+  color: var(--accent);
+  background: var(--selection);
 }
 
 /* --- Session panel status lines (the toolbar holds only buttons) --- */
@@ -186,8 +209,8 @@ body {
 /* The file row tints like an info-level event (Cmd_load::syncEnd). */
 .file-row { color: var(--accent); }
 
-/* Start/stop toggle at the row's right edge. */
-.backend-toggle {
+/* Row-trailing action buttons (backend start/stop, file save). */
+.session-action {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -202,13 +225,13 @@ body {
   cursor: pointer;
 }
 
-.backend-toggle svg {
+.session-action svg {
   width: 1.15em;
   height: 1.15em;
 }
 
-.backend-toggle:hover:not(:disabled) { color: var(--status-info); }
-.backend-toggle:disabled { opacity: 0.4; cursor: default; }
+.session-action:hover:not(:disabled) { color: var(--status-info); }
+.session-action:disabled { opacity: 0.4; cursor: default; }
 
 @keyframes pulse {
   50% { opacity: 0.3; }
@@ -288,6 +311,8 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
+  padding: 0 8px 8px;
+  gap: 0;
 }
 
 #editor-col {
@@ -295,6 +320,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding-top: 8px;
 }
 
 #editor {
@@ -308,70 +334,81 @@ body {
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border);
-  background: var(--panel-bg);
   min-height: 0;
+  padding-top: 8px;
 }
 
-/* --- resize handles: every divider shows the same double line --- */
+/* --- surfaces: every panel is its own rounded card on the page bg --- */
 
-.resize-handle {
+.surface {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  overflow: hidden;
+}
+
+#editor.surface {
+  background: var(--bg);
+}
+
+/* --- gaps: the small spaces between panels double as resize handles --- */
+
+.gap {
   position: relative;
   flex: none;
   z-index: 1;
+  border-radius: 3px;
 }
 
-.resize-handle::before,
-.resize-handle::after {
+.gap::after {
   content: '';
   position: absolute;
-  background: var(--border);
+  border-radius: 3px;
+  background: transparent;
+  transition: background 0.1s ease-out;
 }
 
-.resize-handle:hover::before,
-.resize-handle:hover::after {
-  background: var(--accent);
+.gap:hover::after,
+.gap.dragging::after {
+  background: var(--selection);
 }
 
-.resize-handle-horizontal {
-  height: 6px;
+/* While any drag runs, text selection pauses so the cursor stays honest. */
+body.dragging {
+  user-select: none;
+  cursor: inherit;
+}
+
+.gap-row {
+  height: 8px;
+  margin: 2px 0;
   cursor: row-resize;
 }
 
-.resize-handle-horizontal::before,
-.resize-handle-horizontal::after {
-  left: 10px;
-  right: 10px;
-  height: 1px;
+.gap-row::after {
+  inset: 3px 25%;
 }
 
-.resize-handle-horizontal::before {
-  top: 2px;
-}
-
-.resize-handle-horizontal::after {
-  bottom: 2px;
-}
-
-.resize-handle-vertical {
-  width: 6px;
-  margin-left: -3px;
+.gap-col {
+  width: 8px;
+  margin: 0 2px;
   cursor: col-resize;
 }
 
-.resize-handle-vertical::before,
-.resize-handle-vertical::after {
-  top: 10px;
-  bottom: 10px;
-  width: 1px;
+.gap-col::after {
+  inset: 25% 3px;
 }
 
-.resize-handle-vertical::before {
-  left: 2px;
+/* --- panel visibility toggles (toolbar icons own the state) --- */
+
+body.side-hidden #side,
+body.side-hidden #side-resize {
+  display: none;
 }
 
-.resize-handle-vertical::after {
-  right: 2px;
+body.dock-hidden #dock,
+body.dock-hidden #dock-resize {
+  display: none;
 }
 
 .panel {
@@ -454,8 +491,6 @@ body {
   flex-direction: column;
   flex-basis: 180px;
   min-height: 60px;
-  border-top: 1px solid var(--border);
-  background: var(--panel-bg);
 }
 
 .dock-head {
@@ -485,33 +520,6 @@ body {
 
 .dock-level select {
   font: inherit;
-}
-
-.dock-resize {
-  flex: 1;
-  align-self: stretch;
-  margin-top: 2px;
-  cursor: row-resize;
-}
-
-.dock-resize::before,
-.dock-resize::after {
-  content: '';
-  display: block;
-  border-top: 1px solid var(--border);
-}
-
-.dock-resize::before {
-  margin-top: 3px;
-}
-
-.dock-resize::after {
-  margin-top: 2px;
-}
-
-.dock-resize:hover::before,
-.dock-resize:hover::after {
-  border-color: var(--accent);
 }
 
 .dock-body {
@@ -663,4 +671,131 @@ body {
 .dock-event-expand:hover {
   color: var(--fg);
   border-color: var(--accent);
+}
+
+/* --- agda syntax tokens (agdaHighlightStyle classes) --- */
+
+#editor .tok-keyword { color: var(--pv-key); }
+#editor .tok-string { color: var(--pv-str); }
+#editor .tok-number { color: var(--pv-num); }
+#editor .tok-comment { color: var(--muted); font-style: italic; }
+#editor .tok-meta { color: var(--muted); }
+#editor .tok-qualifier { color: var(--tok-qualifier); }
+#editor .tok-invalid {
+  color: var(--status-error);
+  text-decoration: underline wavy var(--status-error);
+}
+
+/* --- command palette --- */
+
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10vh;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.palette[hidden] {
+  display: none;
+}
+
+.palette-panel {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.palette-input {
+  font: inherit;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+}
+
+.palette-hint {
+  padding: 6px 12px;
+  font-size: 0.8em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  user-select: none;
+}
+
+.palette-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+  font-size: 0.9em;
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.palette-row:hover {
+  background: var(--active-line);
+}
+
+.palette-row.active {
+  background: var(--selection);
+}
+
+/* Backend-offline commands: visible but not runnable (VSCode-style). */
+.palette-row.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.palette-row.disabled:hover,
+.palette-row.disabled.active {
+  background: none;
+}
+
+.palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-label mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.palette-key {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.palette-empty {
+  padding: 12px;
+  color: var(--muted);
+  text-align: center;
 }

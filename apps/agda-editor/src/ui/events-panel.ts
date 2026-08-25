@@ -12,7 +12,6 @@
 import type { EditorState } from '@codemirror/state';
 import type { EventLevel, ObservabilityEvent } from '../model/observability-model';
 import { getEvents } from '../model/observability-model';
-import { clamp, wireDrag } from './resize';
 
 const LEVEL_ORDER: Record<EventLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
@@ -252,7 +251,6 @@ export class EventsPanel {
       this.forceRebuild = true;
       if (this.lastState !== undefined) this.render(this.lastState);
     });
-    this.wireResize(root.querySelector<HTMLElement>('.dock-resize')!, root);
   }
 
   /** Project a new state into the pane. */
@@ -322,15 +320,5 @@ export class EventsPanel {
       sync();
     }
     return row;
-  }
-
-  private wireResize(handle: HTMLElement, root: HTMLElement): void {
-    wireDrag(handle, () => {
-      const startH = root.offsetHeight;
-      return ({ dy }) => {
-        const h = clamp(startH - dy, 60, window.innerHeight - 120);
-        root.style.flexBasis = `${h}px`;
-      };
-    });
   }
 }

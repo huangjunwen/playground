@@ -16,10 +16,14 @@ export function wireDrag(handle: HTMLElement, onDragStart: () => (delta: DragDel
     const onMove = onDragStart();
     const startX = e.clientX;
     const startY = e.clientY;
+    handle.classList.add('dragging');
+    document.body.classList.add('dragging');
     const move = (ev: MouseEvent): void => {
       onMove({ dx: ev.clientX - startX, dy: ev.clientY - startY });
     };
     const up = (): void => {
+      handle.classList.remove('dragging');
+      document.body.classList.remove('dragging');
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
