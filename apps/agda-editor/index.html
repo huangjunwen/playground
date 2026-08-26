@@ -8,18 +8,38 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <title>agda-editor</title>
     <link rel="stylesheet" href="/src/main.css" />
+    <script>
+      // Theme bootstrap: apply the persisted preference before first
+      // paint, so a dark-mode user never sees a light flash. Mirrors
+      // the resolution logic of src/ui/theme.ts; the app owns the
+      // attribute from its boot on.
+      try {
+        var theme = JSON.parse(localStorage.getItem('agda-editor:prefs') || '{}').theme;
+        var dark =
+          theme === 'dark' ||
+          (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
   </head>
   <body>
     <main id="app">
       <div id="toolbar" class="toolbar">
-        <button type="button" data-command="load">Load <kbd>C-c C-l</kbd></button>
-        <button type="button" data-command="give">Give <kbd>C-c C-␣</kbd></button>
-        <button type="button" data-command="next-goal">Next goal <kbd>C-c C-f</kbd></button>
+        <span class="toolbar-title">agda-editor</span>
+        <div class="toolbar-actions">
+          <button type="button" id="btn-theme" class="toolbar-icon" title="Color theme"></button>
+          <button type="button" id="btn-palette" class="toolbar-icon" title="Command palette (Ctrl+Shift+P)"></button>
+          <button type="button" id="btn-toggle-side" class="toolbar-icon" title="Toggle the sidebar"></button>
+          <button type="button" id="btn-toggle-dock" class="toolbar-icon" title="Toggle the events panel"></button>
+        </div>
       </div>
       <div id="main-row">
         <div id="editor-col">
-          <div id="editor"></div>
-          <div id="dock" class="dock">
+          <div id="editor" class="surface"></div>
+          <div id="dock-resize" class="gap gap-row" title="Drag to resize"></div>
+          <div id="dock" class="surface dock">
             <div class="dock-head">
               <span class="dock-title">Events</span>
               <label class="dock-level">level
@@ -30,27 +50,33 @@
                   <option value="error">error</option>
                 </select>
               </label>
-              <div class="dock-resize" title="drag to resize"></div>
             </div>
             <div class="dock-body">
               <div class="dock-events"></div>
             </div>
           </div>
         </div>
-        <div id="side-resize" class="resize-handle resize-handle-vertical" title="drag to resize"></div>
+        <div id="side-resize" class="gap gap-col" title="Drag to resize"></div>
         <div id="side" class="side">
-          <section class="panel panel-session">
+          <section class="surface panel panel-session">
             <header class="panel-head">Session</header>
             <div class="panel-body" id="session-body"></div>
           </section>
-          <div id="panel-resize" class="resize-handle resize-handle-horizontal" title="drag to resize"></div>
-          <section class="panel panel-goals">
+          <div id="panel-resize" class="gap gap-row" title="Drag to resize"></div>
+          <section class="surface panel panel-goals">
             <header class="panel-head">Goals</header>
             <div class="panel-body" id="goals-body"></div>
           </section>
         </div>
       </div>
     </main>
+    <div id="palette" class="palette" hidden>
+      <div class="palette-panel" role="dialog" aria-label="Command palette">
+        <input class="palette-input" placeholder="Type a command…" autocomplete="off" spellcheck="false" />
+        <div class="palette-hint" hidden></div>
+        <div class="palette-list" role="listbox"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

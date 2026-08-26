@@ -12,7 +12,7 @@
 
 import type { EditorState } from '@codemirror/state';
 import { filePathFacet, getSession } from '../model/session-model';
-import { bugIcon, fileIcon, pauseIcon, playIcon, serverIcon, trophyIcon } from './icons';
+import { bugIcon, fileIcon, pauseIcon, playIcon, saveIcon, serverIcon, trophyIcon } from './icons';
 import { type StatusCluster, statusCluster } from './status';
 
 export interface SessionPanelHooks {
@@ -20,6 +20,8 @@ export interface SessionPanelHooks {
   onBackendStart(): void;
   /** Terminate the running backend. */
   onBackendStop(): void;
+  /** Persist the document (the file row's save icon). */
+  onSaveFile(): void;
 }
 
 export class SessionPanel {
@@ -38,7 +40,10 @@ export class SessionPanel {
     this.key = key;
 
     const cluster = statusCluster(state);
-    const rows: HTMLElement[] = [this.backendRow(cluster), this.line(fileIcon(), file, 'file-row')];
+    const rows: HTMLElement[] = [
+      this.backendRow(cluster),
+      this.fileRow(file, cluster.backend.tone === 'online'),
+    ];
     // The verdict row is always present so the log lines below never
     // jump: Busy (spinner, amber), then Error (bug, red) / Checked
     // (trophy, green) when idle, or an empty placeholder line.
@@ -73,6 +78,20 @@ export class SessionPanel {
     this.root.replaceChildren(...rows);
   }
 
+  /** The edited file's path with the manual-save action at its right. */
+  private fileRow(file: string, backendOnline: boolean): HTMLElement {
+    const row = this.line(fileIcon(), file, 'file-row');
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'session-action';
+    save.title = 'Save the file';
+    save.disabled = !backendOnline;
+    save.append(saveIcon());
+    save.addEventListener('click', this.hooks.onSaveFile);
+    row.append(save);
+    return row;
+  }
+
   /** Server icon, the tinted lifecycle pill, and the start/stop toggle. */
   private backendRow(cluster: StatusCluster): HTMLElement {
     // The whole row tints with the lifecycle (icon, pill, dot, word):
@@ -95,17 +114,17 @@ export class SessionPanel {
     const toggle = document.createElement('button');
     toggle.type = 'button';
     if (cluster.backend.tone === 'online') {
-      toggle.className = 'backend-toggle';
+      toggle.className = 'session-action';
       toggle.title = 'Terminate the backend';
       toggle.append(pauseIcon());
       toggle.addEventListener('click', this.hooks.onBackendStop);
     } else if (cluster.backend.tone === 'exited') {
-      toggle.className = 'backend-toggle';
+      toggle.className = 'session-action';
       toggle.title = 'Start the backend';
       toggle.append(playIcon());
       toggle.addEventListener('click', this.hooks.onBackendStart);
     } else {
-      toggle.className = 'backend-toggle';
+      toggle.className = 'session-action';
       toggle.disabled = true;
       toggle.title = 'Backend is booting';
       toggle.append(pauseIcon());

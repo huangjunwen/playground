@@ -13,11 +13,14 @@
     "test:web": "vitest run --root ../.. --project web apps/agda-editor"
   },
   "dependencies": {
+    "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.4.0",
     "@codemirror/view": "^6.34.0",
+    "@lezer/highlight": "^1.2.3",
     "@playground/language-backend-agda": "workspace:*",
     "@playground/lsp": "workspace:*",
     "@playground/run-env": "workspace:*",
+    "@replit/codemirror-vim": "^6.4.0",
     "codemirror": "^6.0.1"
   },
   "devDependencies": {

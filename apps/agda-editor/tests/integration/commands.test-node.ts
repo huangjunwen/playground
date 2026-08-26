@@ -8,7 +8,9 @@
  * executeGive (streaming like load): goal lookup, IOTCM command shape, and the
  * two-transaction application — giveReplacementTransaction then the
  * expandGoalsTransaction + syncGoals assembly — driven through the shared
- * ExecuteContext.executeCommand skeleton.
+ * ExecuteContext.executeCommand skeleton. syncToVfs: the one vfs-write
+ * path (fs::sync, narrated by the context itself), shared by every
+ * explicit save and each command's pre-flight sync.
  */
 
 import { EditorState, Text, type TransactionSpec } from '@codemirror/state';
@@ -302,12 +304,30 @@ describe('executeLoad (streaming)', () => {
     // (backend/backend.ts) — the command layer narrates only what it knows.
     const events = getEvents(view.state);
     expect(events.map(e => [e.level, e.kind])).toEqual([
-      ['info', 'Cmd_load::syncEnd'],
+      ['info', 'fs::sync'],
       ['info', 'Cmd_load::cmdEnd'],
     ]);
     expect(events[0]!.payload).toMatchObject({ elapse: expect.any(String) });
     expect(events[1]!.payload).toMatchObject({ elapse: expect.any(String) });
     expect(events.every((e, i, all) => i === 0 || e.seq === all[i - 1]!.seq + 1)).toBe(true);
+  });
+
+  it('narrates a failed sync through the shared fs seam and skips the stream', async () => {
+    const view = makeView('a = ?');
+    const syncToVfs = vi.fn(async () => {
+      throw new Error('fs full');
+    });
+    const stream = vi.fn(async function* () {});
+    const ctx = new ExecuteContext({ syncToVfs, stream }, view);
+
+    await executeLoad(ctx);
+
+    // A stale vfs must not run the command; the session still closes.
+    expect(stream).not.toHaveBeenCalled();
+    expect(getSession(view.state).busy).toBe(false);
+    const events = getEvents(view.state);
+    expect(events.map(e => [e.level, e.kind])).toEqual([['error', 'fs::sync']]);
+    expect(events[0]!.payload).toMatchObject({ error: 'fs full' });
   });
 });
 
@@ -470,5 +490,36 @@ describe('executeGive', () => {
 
     expect(view.state.doc.toString()).toBe('a = x\nb = {! y !}');
     expect(getGoals(view.state)).toEqual([]);
+  });
+});
+
+describe('syncToVfs (the one vfs-write path every save uses)', () => {
+  it('writes the current document and narrates fs::sync info with elapse', async () => {
+    const { view, ctx, syncToVfs } = makeContext('module Main where\n', []);
+
+    await expect(ctx.syncToVfs()).resolves.toBe(true);
+
+    expect(syncToVfs).toHaveBeenCalledWith(FILE_PATH, 'module Main where\n');
+    const events = getEvents(view.state);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.level).toBe('info');
+    expect(events[0]!.kind).toBe('fs::sync');
+    expect(events[0]!.payload).toMatchObject({ elapse: expect.any(String) });
+  });
+
+  it('narrates a failed write as fs::sync error, never throws, returns false', async () => {
+    const view = makeView('module Main where\n');
+    const syncToVfs = vi.fn(async () => {
+      throw new Error('fs full');
+    });
+    const ctx = new ExecuteContext({ syncToVfs, stream: vi.fn(async function* () {}) }, view);
+
+    await expect(ctx.syncToVfs()).resolves.toBe(false);
+
+    const events = getEvents(view.state);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.level).toBe('error');
+    expect(events[0]!.kind).toBe('fs::sync');
+    expect(events[0]!.payload).toMatchObject({ error: 'fs full' });
   });
 });

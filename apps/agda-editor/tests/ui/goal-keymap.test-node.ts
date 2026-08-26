@@ -9,7 +9,12 @@ import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 import { type GoalRecord, goalModelField, setGoals } from '../../src/model/goal-model';
 import { sessionModelField } from '../../src/model/session-model';
-import { goalUnderCursor, interiorOf, nextGoalRange } from '../../src/ui/goal-keymap';
+import {
+  goalUnderCursor,
+  interiorOf,
+  nextGoalRange,
+  prevGoalRange,
+} from '../../src/ui/goal-keymap';
 
 function makeState(doc: string, goals: GoalRecord[], head = 0) {
   return EditorState.create({
@@ -73,5 +78,32 @@ describe('nextGoalRange', () => {
 
   it('returns undefined when there is no visible goal', () => {
     expect(nextGoalRange([], 0)).toBeUndefined();
+  });
+});
+
+describe('prevGoalRange', () => {
+  const goals: GoalRecord[] = [
+    { id: 1, from: 14, to: 19 },
+    { id: 0, from: 4, to: 9 },
+    { id: 2, from: 24, to: 24 }, // deleted — skipped
+  ];
+
+  it('picks the goal whose end the cursor sits on', () => {
+    expect(prevGoalRange(goals, 19)).toEqual({ id: 1, from: 14, to: 19 });
+  });
+
+  it('skips the goal the cursor sits inside when it starts before it', () => {
+    // Cursor at 15/16 (inside goal 1, which ends at 19): goal 1 ends after
+    // the cursor, so the previous one is goal 0.
+    expect(prevGoalRange(goals, 15)).toEqual({ id: 0, from: 4, to: 9 });
+    expect(prevGoalRange(goals, 16)).toEqual({ id: 0, from: 4, to: 9 });
+  });
+
+  it('wraps around before the first goal', () => {
+    expect(prevGoalRange(goals, 3)).toEqual({ id: 1, from: 14, to: 19 });
+  });
+
+  it('returns undefined when there is no visible goal', () => {
+    expect(prevGoalRange([], 0)).toBeUndefined();
   });
 });
