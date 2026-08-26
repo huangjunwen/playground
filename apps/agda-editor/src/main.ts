@@ -1,8 +1,9 @@
 import './main.css';
 import { indentWithTab } from '@codemirror/commands';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { DEFAULT_ALS_WORKSPACE } from '@playground/language-backend-agda';
+import { Vim, vim } from '@replit/codemirror-vim';
 import { basicSetup } from 'codemirror';
 import { Backend } from './backend/backend';
 import { ExecuteContext } from './integration/commands';
@@ -10,6 +11,7 @@ import { lspFrameEvent, lspLogEvent } from './integration/lsp-events';
 import { agda } from './language/agda';
 import { goalModelField, HOLE_BOUNDARY } from './model/goal-model';
 import { observabilityModelField } from './model/observability-model';
+import { loadPrefs, type Prefs, savePrefs, type ThemePref } from './model/prefs';
 import {
   backendBootingTransaction,
   backendExitTransaction,
@@ -20,13 +22,14 @@ import {
 import { appKeymap, wireGlobalKeys } from './ui/app-keymap';
 import { Chrome } from './ui/chrome';
 import { CommandPalette } from './ui/command-palette';
-import { buildCommands } from './ui/commands';
+import { agdaChordRoot, buildCommands } from './ui/commands';
 import { EventsPanel } from './ui/events-panel';
 import { goalDecorations, goalStyleTheme } from './ui/goal-decorations';
 import { goalBoundaryGuard } from './ui/goal-guard';
 import { GoalsPanel } from './ui/goals-panel';
 import { clamp, wireDrag } from './ui/resize';
 import { SessionPanel } from './ui/session-panel';
+import { applyTheme, watchSystemTheme } from './ui/theme';
 
 const FILE_PATH = `${DEFAULT_ALS_WORKSPACE}/Main.agda`;
 
@@ -34,6 +37,41 @@ const FILE_PATH = `${DEFAULT_ALS_WORKSPACE}/Main.agda`;
 let backend: Backend | undefined;
 let ctx: ExecuteContext | undefined;
 let view: EditorView;
+
+// --- user preferences (theme, vim) — persisted, projected into the
+// commands' checked() marks, the toolbar icon, and the editor itself. ---
+
+let prefs: Prefs = loadPrefs();
+
+const vimCompartment = new Compartment();
+
+function setTheme(theme: ThemePref): void {
+  prefs = { ...prefs, theme };
+  savePrefs(prefs);
+  applyTheme(theme);
+  chrome.setTheme(theme);
+  palette.sync(); // the checked marks move with the preference
+}
+
+function toggleVim(): void {
+  prefs = { ...prefs, vim: !prefs.vim };
+  savePrefs(prefs);
+  view.dispatch({ effects: vimCompartment.reconfigure(prefs.vim ? vim() : []) });
+  palette.sync();
+}
+
+const THEME_CYCLE: ThemePref[] = ['light', 'dark', 'system'];
+
+function cycleTheme(): void {
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(prefs.theme) + 1) % THEME_CYCLE.length]!;
+  setTheme(next);
+}
+
+// 'system' keeps following the OS until the user pins a side.
+watchSystemTheme(
+  () => prefs.theme,
+  () => chrome.setTheme(prefs.theme),
+);
 
 // --- panel visibility: body classes + toolbar toggle state ---
 
@@ -61,19 +99,29 @@ function runSave(): void {
   commands.find(c => c.id === 'file.save')?.run(view);
 }
 
+// Vim's :w/:write is just another save entry point — same command,
+// same vfs-write seam.
+Vim.defineEx('write', 'w', () => runSave());
+
 // --- chrome + palette + commands, cross-referenced by closure ---
 
 const chrome = new Chrome(document.getElementById('toolbar')!, {
-  onOpenPalette: () => palette.open('all'),
+  onCycleTheme: cycleTheme,
+  onOpenPalette: () => palette.open(),
   onToggleSide: toggleSide,
   onToggleDock: toggleDock,
 });
+chrome.setTheme(prefs.theme);
 
 const commands = buildCommands({
   getCtx: () => ctx,
   toggleSide,
   toggleDock,
-  openPalette: mode => palette.open(mode),
+  openPalette: prefix => palette.open(prefix),
+  getTheme: () => prefs.theme,
+  setTheme,
+  isVim: () => prefs.vim,
+  toggleVim,
 });
 
 const palette = new CommandPalette(document.getElementById('palette')!, {
@@ -127,22 +175,30 @@ wireDrag(document.getElementById('dock-resize')!, () => {
   };
 });
 
-// Global shortcuts (palette, save) fire from any focus target; the
-// editor-scoped keymap (bare Mod-C agda prefix) needs the selection.
+// Global sequence dispatch: single-key bindings (Ctrl+S,
+// Ctrl+Shift+P) run directly from any focus target; chord roots
+// (Ctrl+C) open the palette as a filter. The editor-scoped keymap
+// (same Mod-C root) handles the editor case, where CM's default
+// keymap would otherwise swallow the key.
 wireGlobalKeys(window, {
-  openPalette: () => palette.open('all'),
-  saveFile: runSave,
+  getCommands: () => commands,
+  run: command => command.run(view),
+  openPalette: prefix => palette.open(prefix),
 });
 
 view = new EditorView({
   state: EditorState.create({
     doc: '',
     extensions: [
-      // Before basicSetup, so the bare Mod-C prefix wins over the
+      // Before basicSetup, so the bare Mod-C chord root wins over the
       // default keymap's copy (it still falls through with a selection).
-      keymap.of([...appKeymap({ openPalette: mode => palette.open(mode) }), indentWithTab]),
+      keymap.of([
+        ...appKeymap({ openChordRoot: () => palette.open(agdaChordRoot) }),
+        indentWithTab,
+      ]),
       basicSetup,
       agda(),
+      vimCompartment.of(prefs.vim ? vim() : []),
       goalModelField,
       sessionModelField,
       observabilityModelField,
@@ -167,6 +223,10 @@ view = new EditorView({
 
 // updateListener runs on dispatches only — paint the booting state now.
 sessionPanel.update(view.state);
+
+// The index.html bootstrap set the attribute before first paint; from
+// here on the app owns it (and the system watcher keeps 'system' live).
+applyTheme(prefs.theme);
 
 // LSP wire events: every LSP frame both ways, plus each server error-stream
 // line, lands in the observability log — commands only narrate what the

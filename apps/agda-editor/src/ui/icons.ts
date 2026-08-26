@@ -141,3 +141,38 @@ export function commandIcon(): SVGSVGElement {
     'Command palette',
   );
 }
+
+/** sun — the light theme */
+export function sunIcon(): SVGSVGElement {
+  return icon(
+    [
+      'M12 16a4 4 0 1 0 0-8 4 4 0 1 0 0 8Z',
+      'M12 2v2',
+      'M12 20v2',
+      'm4.93 4.93 1.41 1.41',
+      'm17.66 17.66 1.41 1.41',
+      'M2 12h2',
+      'M20 12h2',
+      'm6.34 17.66-1.41 1.41',
+      'm19.07 4.93-1.41 1.41',
+    ],
+    'Color theme: light',
+  );
+}
+
+/** moon — the dark theme */
+export function moonIcon(): SVGSVGElement {
+  return icon(['M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'], 'Color theme: dark');
+}
+
+/** monitor — following the system theme */
+export function monitorIcon(): SVGSVGElement {
+  return icon(
+    [
+      'M5 3h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',
+      'M12 17v4',
+      'M8 21h8',
+    ],
+    'Color theme: follow the system',
+  );
+}

@@ -1,25 +1,32 @@
 /**
  * Command palette — the pure halves: fuzzy matching (subsequence,
- * scoring, positions), mode filtering (the Ctrl+C chord group), match
- * highlighting, and the registry invariants the chord completion and
- * the palette rows depend on.
+ * scoring, positions), the key-sequence machinery (event → binding
+ * normalization, prefix matching, filtering by a pressed chord),
+ * match highlighting, and the registry invariants the palette rows
+ * and the global dispatch depend on.
  */
 
 import type { EditorView } from '@codemirror/view';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  bindingOfEvent,
   commandLabel,
   filterCommands,
   fuzzyMatch,
   highlightSegments,
+  matchSequence,
 } from '../../src/ui/command-palette';
-import { agdaChords, buildCommands, type CommandEnv } from '../../src/ui/commands';
+import { agdaChordRoot, buildCommands, type CommandEnv, modKey } from '../../src/ui/commands';
 
 const stubEnv: CommandEnv = {
   getCtx: () => undefined,
   toggleSide: () => {},
   toggleDock: () => {},
   openPalette: () => {},
+  getTheme: () => 'system',
+  setTheme: () => {},
+  isVim: () => false,
+  toggleVim: () => {},
 };
 
 describe('fuzzyMatch', () => {
@@ -49,28 +56,111 @@ describe('fuzzyMatch', () => {
   });
 });
 
+describe('bindingOfEvent', () => {
+  it('normalizes letters, space, and shift into binding segments', () => {
+    expect(
+      bindingOfEvent({ key: 'l', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
+    ).toBe(`${modKey}+L`);
+    expect(
+      bindingOfEvent({ key: ' ', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
+    ).toBe(`${modKey}+Space`);
+    expect(
+      bindingOfEvent({ key: 'p', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }),
+    ).toBe(`${modKey}+Shift+P`);
+  });
+
+  it('accepts either ctrl or the platform meta key', () => {
+    expect(
+      bindingOfEvent({ key: 'c', ctrlKey: false, metaKey: true, shiftKey: false, altKey: false }),
+    ).toBe(`${modKey}+C`);
+  });
+
+  it('rejects plain keys, alt combos, and bare modifiers', () => {
+    expect(
+      bindingOfEvent({ key: 'l', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false }),
+    ).toBeNull();
+    expect(
+      bindingOfEvent({ key: 'l', ctrlKey: true, metaKey: false, shiftKey: false, altKey: true }),
+    ).toBeNull();
+    expect(
+      bindingOfEvent({
+        key: 'Control',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBeNull();
+    expect(
+      bindingOfEvent({
+        key: 'ArrowDown',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('matchSequence', () => {
+  const commands = buildCommands(stubEnv);
+
+  it('counts the chord root as a pure prefix of the agda commands', () => {
+    const match = matchSequence(commands, agdaChordRoot);
+    expect(match.exact).toEqual([]);
+    expect(match.prefixCount).toBe(4); // load, give, next-goal, prev-goal
+  });
+
+  it('completes a full chord to exactly one command', () => {
+    const match = matchSequence(commands, `${agdaChordRoot} ${modKey}+L`);
+    expect(match.exact.map(c => c.id)).toEqual(['agda.load']);
+    expect(match.prefixCount).toBe(1);
+  });
+
+  it('matches a single-key binding exactly', () => {
+    const match = matchSequence(commands, `${modKey}+S`);
+    expect(match.exact.map(c => c.id)).toEqual(['file.save']);
+    expect(match.prefixCount).toBe(1);
+  });
+
+  it('matches nothing for an unbound combo', () => {
+    const match = matchSequence(commands, `${modKey}+Q`);
+    expect(match.exact).toEqual([]);
+    expect(match.prefixCount).toBe(0);
+  });
+});
+
 describe('filterCommands', () => {
   const commands = buildCommands(stubEnv);
 
-  it('lists the whole registry in all mode with an empty query', () => {
-    const rows = filterCommands(commands, '', 'all');
+  it('lists the whole registry with no prefix and an empty query', () => {
+    const rows = filterCommands(commands, '');
     expect(rows.map(r => r.command.id)).toEqual(commands.map(c => c.id));
   });
 
-  it('agda mode keeps only the Agda category', () => {
-    const rows = filterCommands(commands, '', 'agda');
+  it('a pressed chord root keeps only the bindings extending it', () => {
+    const rows = filterCommands(commands, '', agdaChordRoot);
     expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect(row.command.category).toBe('Agda');
+    for (const row of rows) {
+      expect(row.command.category).toBe('Agda');
+      expect(row.command.keybinding!.startsWith(`${agdaChordRoot} `)).toBe(true);
+    }
   });
 
   it('re-orders by score when a query is present', () => {
-    const rows = filterCommands(commands, 'give', 'all');
+    const rows = filterCommands(commands, 'give');
     expect(rows[0]!.command.id).toBe('agda.give');
     expect(rows.length).toBeLessThan(commands.length);
   });
 
+  it('combines the key prefix with the typed query', () => {
+    const rows = filterCommands(commands, 'next', agdaChordRoot);
+    expect(rows.map(r => r.command.id)).toEqual(['agda.next-goal']);
+  });
+
   it('returns nothing for a query nothing matches', () => {
-    expect(filterCommands(commands, 'zzzz', 'all')).toEqual([]);
+    expect(filterCommands(commands, 'zzzz')).toEqual([]);
   });
 });
 
@@ -99,12 +189,11 @@ describe('command registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('resolves every chord letter to an existing Agda command with a keybinding', () => {
-    for (const [letter, id] of Object.entries(agdaChords)) {
-      const command = commands.find(c => c.id === id);
-      expect(command, `chord ${letter} → ${id}`).toBeDefined();
-      expect(command!.category).toBe('Agda');
-      expect(command!.keybinding).toBeDefined();
+  it('extends the chord root only from the Agda category', () => {
+    for (const command of commands) {
+      if (command.keybinding?.startsWith(`${agdaChordRoot} `)) {
+        expect(command.category).toBe('Agda');
+      }
     }
   });
 
@@ -112,6 +201,26 @@ describe('command registry', () => {
     for (const command of commands) {
       expect(commandLabel(command)).toBe(`${command.category}: ${command.title}`);
     }
+  });
+
+  it('marks exactly one theme command checked per preference', () => {
+    for (const theme of ['light', 'dark', 'system'] as const) {
+      const commands = buildCommands({ ...stubEnv, getTheme: () => theme });
+      const checked = commands.filter(c => c.checked?.()).map(c => c.id);
+      expect(checked).toEqual([`view.theme-${theme}`]);
+    }
+  });
+
+  it('setTheme/toggleVim flow through the environment', () => {
+    const setTheme = vi.fn();
+    const toggleVim = vi.fn();
+    const commands = buildCommands({ ...stubEnv, setTheme, toggleVim });
+    const view = { dispatch: vi.fn() } as unknown as EditorView;
+
+    expect(commands.find(c => c.id === 'view.theme-dark')!.run(view)).toBe(true);
+    expect(setTheme).toHaveBeenCalledWith('dark');
+    expect(commands.find(c => c.id === 'view.toggle-vim')!.run(view)).toBe(true);
+    expect(toggleVim).toHaveBeenCalledOnce();
   });
 });
 

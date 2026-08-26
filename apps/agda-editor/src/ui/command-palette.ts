@@ -1,23 +1,27 @@
 /**
  * Command palette — the VSCode-style overlay every command flows
- * through. Two modes: `all` lists the registry (Ctrl+Shift+P); `agda`
- * opens on Ctrl+C and lists only the Agda chord commands, so the
- * chord letters are visible instead of memorized — typing a letter
- * with Ctrl held completes the chord (Ctrl+C Ctrl+L etc.) directly.
+ * through. The palette is a *filter over the registry*, driven two
+ * ways that compose: a typed query (fuzzy) and a pressed key
+ * sequence. Multi-key bindings (the Agda chords) make the difference
+ * visible: every unpressed key is highlighted as "to press next";
+ * pressing a binding's root (Ctrl+C) opens the palette with that
+ * prefix marked as pressed — those segments dim while the rest stay
+ * highlighted. Pressing the next key narrows further; when exactly
+ * one command is left it runs and the palette closes. Backspace
+ * un-presses, Escape closes.
  *
- * Filtering and match highlighting are exported as pure functions
- * (node-tested); the class below is their thin DOM projection: one
- * input, a hint line in agda mode, and rows of label + keybinding.
+ * Event-to-binding normalization, sequence matching, filtering and
+ * match highlighting are exported as pure functions (node-tested);
+ * the class below is their thin DOM projection.
+ *
  * Commands whose `enabled()` is false (backend-dependent, offline)
  * render as disabled rows — navigation skips them and Enter refuses —
  * and `sync()` re-derives them when the session model changes while
  * the palette is open.
  */
 
-import type { AppCommand, CommandCategory } from './commands';
-import { agdaChords } from './commands';
-
-export type PaletteMode = 'all' | 'agda';
+import type { AppCommand } from './commands';
+import { modKey } from './commands';
 
 /** Fuzzy subsequence match: every query char, in order, in target. */
 export function fuzzyMatch(
@@ -49,6 +53,51 @@ export function commandLabel(command: AppCommand): string {
   return `${command.category}: ${command.title}`;
 }
 
+/**
+ * Normalize a keyboard event into a binding segment ('Ctrl+L',
+ * '⌘+Space', 'Ctrl+Shift+P') or null when the event carries no
+ * command modifier, is alt-ed, or is a bare modifier key. Pure over
+ * the four event fields it reads.
+ */
+export function bindingOfEvent(event: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): string | null {
+  if (event.altKey) return null;
+  if (!event.ctrlKey && !event.metaKey) return null;
+  const key = event.key === ' ' ? 'Space' : event.key.length === 1 ? event.key.toUpperCase() : null;
+  if (key === null) return null; // modifiers, arrows, etc. are no bindings
+  return event.shiftKey ? `${modKey}+Shift+${key}` : `${modKey}+${key}`;
+}
+
+export interface SequenceMatch {
+  /** Commands whose binding equals the sequence exactly. */
+  exact: AppCommand[];
+  /** Commands whose binding equals OR extends the sequence. */
+  prefixCount: number;
+}
+
+/**
+ * Match a pressed key sequence against the registry: how many
+ * commands it completes, and how many it is still a prefix of.
+ * `prefixCount > 1` means "keep filtering"; a single survivor means
+ * "run it".
+ */
+export function matchSequence(commands: readonly AppCommand[], seq: string): SequenceMatch {
+  let exact: AppCommand[] = [];
+  let prefixCount = 0;
+  for (const command of commands) {
+    const binding = command.keybinding;
+    if (binding === undefined) continue;
+    if (binding === seq) exact = [...exact, command];
+    if (binding === seq || binding.startsWith(`${seq} `)) prefixCount += 1;
+  }
+  return { exact, prefixCount };
+}
+
 export interface PaletteEntry {
   command: AppCommand;
   score: number;
@@ -56,27 +105,33 @@ export interface PaletteEntry {
 }
 
 /**
- * The visible rows: in agda mode only the Agda-category commands (the
- * Ctrl+C chord group, unfiltered by default), in all mode the whole
- * registry. A query fuzzy-matches the label and re-orders by score;
- * ties keep registry order.
+ * The visible rows: the key-prefix filter first (a pressed sequence
+ * keeps only the bindings that extend it), then the typed query
+ * fuzzy-matching the label and re-ordering by score; ties keep
+ * registry order.
  */
 export function filterCommands(
   commands: readonly AppCommand[],
   query: string,
-  mode: PaletteMode,
+  keyPrefix = '',
 ): PaletteEntry[] {
   const pool =
-    mode === 'agda'
-      ? commands.filter(c => c.category === ('Agda' satisfies CommandCategory))
-      : commands;
+    keyPrefix === ''
+      ? [...commands]
+      : commands.filter(c => c.keybinding?.startsWith(`${keyPrefix} `) ?? false);
   if (query.trim() === '') return pool.map(command => ({ command, score: 0, positions: [] }));
   const scored: PaletteEntry[] = [];
   for (const command of pool) {
     const m = fuzzyMatch(query, commandLabel(command));
     if (m !== null) scored.push({ command, score: m.score, positions: m.positions });
   }
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    // Ties favor the shorter label ('View: Vim mode' over 'View: Show
+    // all commands' for the query "vim"); sort is stable, so registry
+    // order still decides exact ties.
+    return commandLabel(a.command).length - commandLabel(b.command).length;
+  });
   return scored;
 }
 
@@ -119,7 +174,7 @@ export class CommandPalette {
   private readonly input: HTMLInputElement;
   private readonly hint: HTMLElement;
   private readonly list: HTMLElement;
-  private mode: PaletteMode = 'all';
+  private keyPrefix = '';
   private entries: PaletteEntry[] = [];
   private active = 0;
 
@@ -144,14 +199,14 @@ export class CommandPalette {
     });
   }
 
-  open(mode: PaletteMode): void {
-    this.mode = mode;
+  /**
+   * Open the palette, optionally with a key sequence already pressed
+   * (the chord root from a cold Ctrl+C). Always resets the query.
+   */
+  open(keyPrefix = ''): void {
+    this.keyPrefix = keyPrefix;
     this.root.hidden = false;
-    this.hint.hidden = mode !== 'agda';
-    if (mode === 'agda') {
-      this.hint.textContent =
-        'Ctrl+C chord — hold Ctrl and press the command letter, or pick below; Esc closes.';
-    }
+    this.updateHint();
     this.input.value = '';
     this.refresh();
     this.input.focus();
@@ -167,6 +222,11 @@ export class CommandPalette {
     return !this.root.hidden;
   }
 
+  /** The currently pressed key sequence (test/debug surface). */
+  get prefix(): string {
+    return this.keyPrefix;
+  }
+
   /**
    * Re-derive the rows without disturbing the query — for when the
    * world changes under an open palette (the backend coming online
@@ -175,6 +235,15 @@ export class CommandPalette {
   sync(): void {
     if (this.root.hidden) return;
     this.refresh(true);
+  }
+
+  private updateHint(): void {
+    if (this.keyPrefix === '') {
+      this.hint.hidden = true;
+      return;
+    }
+    this.hint.hidden = false;
+    this.hint.textContent = `${this.keyPrefix} pressed — press a highlighted key to run, Backspace to un-press, Esc to close.`;
   }
 
   private isEnabled(entry: PaletteEntry): boolean {
@@ -188,7 +257,7 @@ export class CommandPalette {
 
   private refresh(preserveActive = false): void {
     const keep = preserveActive ? this.active : 0;
-    this.entries = filterCommands(this.hooks.getCommands(), this.input.value, this.mode).slice(
+    this.entries = filterCommands(this.hooks.getCommands(), this.input.value, this.keyPrefix).slice(
       0,
       MAX_ROWS,
     );
@@ -215,6 +284,12 @@ export class CommandPalette {
       row.classList.add('disabled');
       row.setAttribute('aria-disabled', 'true');
     }
+    if (entry.command.checked?.()) {
+      const check = document.createElement('span');
+      check.className = 'palette-check';
+      check.textContent = '✓';
+      row.append(check);
+    }
     const label = document.createElement('span');
     label.className = 'palette-label';
     const segments = highlightSegments(commandLabel(entry.command), entry.positions);
@@ -229,10 +304,19 @@ export class CommandPalette {
       }
     }
     row.append(label);
-    if (entry.command.keybinding !== undefined) {
-      const keys = document.createElement('kbd');
+    const binding = entry.command.keybinding;
+    if (binding !== undefined) {
+      const keys = document.createElement('span');
       keys.className = 'palette-key';
-      keys.textContent = entry.command.keybinding;
+      const pressed = this.keyPrefix === '' ? 0 : this.keyPrefix.split(' ').length;
+      for (const [i, seg] of binding.split(' ').entries()) {
+        if (i > 0) keys.append(' ');
+        const kbd = document.createElement('kbd');
+        kbd.textContent = seg;
+        if (i < pressed) kbd.classList.add('pressed');
+        else kbd.classList.add('await');
+        keys.append(kbd);
+      }
       row.append(keys);
     }
     return row;
@@ -280,15 +364,37 @@ export class CommandPalette {
       if (entry !== undefined) this.run(entry);
       return;
     }
-    // Agda mode doubles as the Ctrl+C chord reader: Ctrl+letter runs
-    // the chord command directly.
-    if (this.mode === 'agda' && (e.ctrlKey || e.metaKey)) {
-      const id = agdaChords[e.key.toLowerCase()];
-      if (id !== undefined) {
+    // Backspace on an empty query un-presses the last chord key.
+    if (e.key === 'Backspace' && this.input.value === '' && this.keyPrefix !== '') {
+      e.preventDefault();
+      this.keyPrefix = this.keyPrefix.split(' ').slice(0, -1).join(' ');
+      this.updateHint();
+      this.refresh();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      const binding = bindingOfEvent(e);
+      if (binding === null) return;
+      const seq = this.keyPrefix === '' ? binding : `${this.keyPrefix} ${binding}`;
+      const match = matchSequence(this.hooks.getCommands(), seq);
+      if (match.prefixCount === 1 && match.exact.length === 1) {
+        // One survivor: the sequence completes to it — run and close.
         e.preventDefault();
-        const command = this.hooks.getCommands().find(c => c.id === id);
-        if (command !== undefined) this.run({ command, score: 0, positions: [] });
+        this.run({ command: match.exact[0]!, score: 0, positions: [] });
+        return;
       }
+      if (match.prefixCount > 1) {
+        // Still ambiguous: the press narrows the filter, stays open.
+        e.preventDefault();
+        this.keyPrefix = seq;
+        this.updateHint();
+        this.refresh();
+        return;
+      }
+      // Nothing binds this combo: swallow it inside the palette, but
+      // let the couple of plain input conveniences through.
+      if (seq === `${modKey}+V` || seq === `${modKey}+A`) return;
+      e.preventDefault();
     }
   }
 

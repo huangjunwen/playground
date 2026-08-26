@@ -8,12 +8,28 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
     <title>agda-editor</title>
     <link rel="stylesheet" href="/src/main.css" />
+    <script>
+      // Theme bootstrap: apply the persisted preference before first
+      // paint, so a dark-mode user never sees a light flash. Mirrors
+      // the resolution logic of src/ui/theme.ts; the app owns the
+      // attribute from its boot on.
+      try {
+        var theme = JSON.parse(localStorage.getItem('agda-editor:prefs') || '{}').theme;
+        var dark =
+          theme === 'dark' ||
+          (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
   </head>
   <body>
     <main id="app">
       <div id="toolbar" class="toolbar">
         <span class="toolbar-title">agda-editor</span>
         <div class="toolbar-actions">
+          <button type="button" id="btn-theme" class="toolbar-icon" title="Color theme"></button>
           <button type="button" id="btn-palette" class="toolbar-icon" title="Command palette (Ctrl+Shift+P)"></button>
           <button type="button" id="btn-toggle-side" class="toolbar-icon" title="Toggle the sidebar"></button>
           <button type="button" id="btn-toggle-dock" class="toolbar-icon" title="Toggle the events panel"></button>

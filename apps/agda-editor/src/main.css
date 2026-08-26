@@ -1,7 +1,10 @@
-/* agda-editor — layout, dock, toolbar; colors via variables, light/dark by
-   prefers-color-scheme. Goal-hole colors are read by the CM6 theme too. */
+/* agda-editor — layout, dock, toolbar; colors via variables, light and
+   dark under `data-theme` on the document root (set before first
+   paint by the index.html bootstrap). Goal-hole colors are read by
+   the CM6 theme too. */
 
-:root {
+:root,
+:root[data-theme='light'] {
   --bg: #ffffff;
   --fg: #1f2328;
   --muted: #6e7781;
@@ -29,33 +32,31 @@
   --status-info: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117;
-    --fg: #e6edf3;
-    --muted: #8b949e;
-    --border: #30363d;
-    --accent: #58a6ff;
-    --panel-bg: #161b22;
-    --scrollbar-thumb: rgba(110, 118, 129, 0.35);
-    --scrollbar-thumb-hover: rgba(110, 118, 129, 0.55);
-    --pv-key: #d2a8ff;
-    --pv-str: #ffa657;
-    --pv-num: #79c0ff;
-    --pv-bool: #ff7b72;
-    --tok-qualifier: #ffa657;
-    --selection: rgba(88, 166, 255, 0.25);
-    --active-line: rgba(110, 118, 129, 0.1);
-    --goal-hole-bg: rgba(175, 132, 25, 0.25);
-    --goal-hole-border: rgba(210, 165, 60, 0.5);
-    --goal-active-bg: rgba(56, 139, 253, 0.25);
-    --goal-active-border: rgba(88, 166, 255, 0.6);
-    --goal-type-fg: #8b949e;
-    --goal-type-bg: rgba(139, 148, 158, 0.15);
-    --status-busy: #d29922;
-    --status-error: #f85149;
-    --status-ok: #3fb950;
-  }
+:root[data-theme='dark'] {
+  --bg: #0d1117;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --panel-bg: #161b22;
+  --scrollbar-thumb: rgba(110, 118, 129, 0.35);
+  --scrollbar-thumb-hover: rgba(110, 118, 129, 0.55);
+  --pv-key: #d2a8ff;
+  --pv-str: #ffa657;
+  --pv-num: #79c0ff;
+  --pv-bool: #ff7b72;
+  --tok-qualifier: #ffa657;
+  --selection: rgba(88, 166, 255, 0.25);
+  --active-line: rgba(110, 118, 129, 0.1);
+  --goal-hole-bg: rgba(175, 132, 25, 0.25);
+  --goal-hole-border: rgba(210, 165, 60, 0.5);
+  --goal-active-bg: rgba(56, 139, 253, 0.25);
+  --goal-active-border: rgba(88, 166, 255, 0.6);
+  --goal-type-fg: #8b949e;
+  --goal-type-bg: rgba(139, 148, 158, 0.15);
+  --status-busy: #d29922;
+  --status-error: #f85149;
+  --status-ok: #3fb950;
 }
 
 /* Scrollbars — thin, unobtrusive, matching either theme. */
@@ -303,6 +304,27 @@ body {
   background: var(--panel-bg);
   border: 1px solid var(--border);
   color: var(--fg);
+}
+
+/* Vim mode line / ex prompt: the vim extension's bottom panel ships a
+   fixed light scheme — re-derive it from the app theme. */
+#editor .cm-panels {
+  background: var(--panel-bg);
+  color: var(--fg);
+}
+
+#editor .cm-panels-bottom {
+  border-top: 1px solid var(--border);
+}
+
+#editor .cm-vim-panel {
+  background: none;
+  color: var(--fg);
+}
+
+#editor .cm-vim-panel input {
+  color: var(--fg);
+  caret-color: var(--accent);
 }
 
 /* --- editor column + sidebar --- */
@@ -784,14 +806,37 @@ body.dock-hidden #dock-resize {
   font-weight: 600;
 }
 
+/* Keybinding column: one kbd per key segment. Keys still to press
+   light up in the accent color; while a chord is being typed, the
+   already-pressed segments dim. */
 .palette-key {
   flex: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.palette-key kbd {
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 6px;
+}
+
+.palette-key kbd.pressed {
+  opacity: 0.45;
+}
+
+.palette-key kbd.await {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A preference-backed command shows a check while it is in effect. */
+.palette-check {
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .palette-empty {

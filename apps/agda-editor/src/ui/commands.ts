@@ -2,21 +2,26 @@
  * Commands — the registry every entry point shares: the palette rows,
  * the keyboard bindings, the chord completions. A command is data
  * (id, title, category, display keybinding) plus a `run(view)`; the
- * environment (backend access, panel toggles, palette itself) is
- * injected by main.ts so the registry stays pure data + wiring.
+ * environment (backend access, panel toggles, theme + vim prefs, the
+ * palette itself) is injected by main.ts so the registry stays pure
+ * data + wiring.
  *
  * Backend-dependent commands also declare `enabled()`: the palette and
  * the buttons render them disabled until the backend runs — a
  * projection of the session model, mirroring how `run` still guards
- * (a keyboard shortcut has no row to disable).
+ * (a keyboard shortcut has no row to disable). Preference-backed
+ * commands declare `checked()` the same way, so palette rows can
+ * carry a state mark (the current theme, vim on/off).
  *
- * The `Agda` category doubles as the Ctrl+C chord group: opening the
- * palette in agda mode lists exactly these commands, so the chord
- * letters are discoverable instead of memorized.
+ * Multi-key bindings (the Agda chords) share the root `agdaChordRoot`
+ * (Ctrl+C / ⌘C): pressing it anywhere opens the palette filtered to
+ * the commands that extend it — see ui/command-palette.ts and
+ * ui/app-keymap.ts for the sequence machinery.
  */
 
 import type { EditorView } from '@codemirror/view';
 import { appendEventTransaction } from '../model/observability-model';
+import type { ThemePref } from '../model/prefs';
 import {
   type CtxAccessor,
   giveFromCursorCommand,
@@ -41,6 +46,11 @@ export interface AppCommand {
    * while false, and `run` refuses politely (the guarded warn).
    */
   enabled?(): boolean;
+  /**
+   * For toggle-like commands: whether they are currently in effect.
+   * The palette prefixes such a row with a check mark.
+   */
+  checked?(): boolean;
   run(view: EditorView): boolean;
 }
 
@@ -49,7 +59,11 @@ export interface CommandEnv {
   getCtx: CtxAccessor;
   toggleSide(): void;
   toggleDock(): void;
-  openPalette(mode: 'all' | 'agda'): void;
+  openPalette(prefix?: string): void;
+  getTheme(): ThemePref;
+  setTheme(pref: ThemePref): void;
+  isVim(): boolean;
+  toggleVim(): void;
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
@@ -57,15 +71,11 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 export const modKey = isMac ? '⌘' : 'Ctrl';
 
 /**
- * The Ctrl+C chord table: the letter pressed with Ctrl while the
- * palette is in agda mode completes to this command id.
+ * The root of every Agda chord binding (`Ctrl+C` / `⌘C`). Pressing it
+ * is a prefix filter, not a command: the palette opens listing the
+ * commands that extend it, and the next key completes one.
  */
-export const agdaChords: Record<string, string> = {
-  l: 'agda.load',
-  ' ': 'agda.give',
-  f: 'agda.next-goal',
-  b: 'agda.prev-goal',
-};
+export const agdaChordRoot = `${modKey}+C`;
 
 /** A backend-dependent command that refuses politely when offline. */
 function guarded(note: string, run: (view: EditorView) => boolean): (view: EditorView) => boolean {
@@ -86,7 +96,7 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       id: 'agda.load',
       title: 'Load (type-check the file)',
       category: 'Agda',
-      keybinding: `${modKey}+C ${modKey}+L`,
+      keybinding: `${agdaChordRoot} ${modKey}+L`,
       enabled: backendOnline,
       run: view => guarded('load: backend offline', loadCommand(env.getCtx))(view),
     },
@@ -94,7 +104,7 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       id: 'agda.give',
       title: 'Give (fill the goal under the cursor)',
       category: 'Agda',
-      keybinding: `${modKey}+C ${modKey}+Space`,
+      keybinding: `${agdaChordRoot} ${modKey}+Space`,
       enabled: backendOnline,
       run: view => guarded('give: backend offline', giveFromCursorCommand(env.getCtx))(view),
     },
@@ -102,14 +112,14 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       id: 'agda.next-goal',
       title: 'Next goal',
       category: 'Agda',
-      keybinding: `${modKey}+C ${modKey}+F`,
+      keybinding: `${agdaChordRoot} ${modKey}+F`,
       run: nextGoalCommand,
     },
     {
       id: 'agda.prev-goal',
       title: 'Previous goal',
       category: 'Agda',
-      keybinding: `${modKey}+C ${modKey}+B`,
+      keybinding: `${agdaChordRoot} ${modKey}+B`,
       run: prevGoalCommand,
     },
     {
@@ -131,7 +141,7 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       category: 'View',
       keybinding: `${modKey}+Shift+P`,
       run: () => {
-        env.openPalette('all');
+        env.openPalette();
         return true;
       },
     },
@@ -150,6 +160,46 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       category: 'View',
       run: () => {
         env.toggleDock();
+        return true;
+      },
+    },
+    {
+      id: 'view.theme-light',
+      title: 'Color theme: light',
+      category: 'View',
+      checked: () => env.getTheme() === 'light',
+      run: () => {
+        env.setTheme('light');
+        return true;
+      },
+    },
+    {
+      id: 'view.theme-dark',
+      title: 'Color theme: dark',
+      category: 'View',
+      checked: () => env.getTheme() === 'dark',
+      run: () => {
+        env.setTheme('dark');
+        return true;
+      },
+    },
+    {
+      id: 'view.theme-system',
+      title: 'Color theme: follow the system',
+      category: 'View',
+      checked: () => env.getTheme() === 'system',
+      run: () => {
+        env.setTheme('system');
+        return true;
+      },
+    },
+    {
+      id: 'view.toggle-vim',
+      title: 'Vim mode',
+      category: 'View',
+      checked: () => env.isVim(),
+      run: () => {
+        env.toggleVim();
         return true;
       },
     },
