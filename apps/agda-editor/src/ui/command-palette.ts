@@ -8,7 +8,7 @@
  * prefix marked as pressed — those segments dim while the rest stay
  * highlighted. Pressing the next key narrows further; when exactly
  * one command is left it runs and the palette closes. Backspace
- * un-presses, Escape closes.
+ * un-presses, Escape closes (from any focus).
  *
  * Event-to-binding normalization, sequence matching, filtering and
  * match highlighting are exported as pure functions (node-tested);
@@ -188,7 +188,23 @@ export class CommandPalette {
     this.input.addEventListener('input', () => this.refresh());
     this.input.addEventListener('keydown', e => this.onKeyDown(e));
     root.addEventListener('mousedown', e => {
-      if (e.target === this.root) this.close();
+      // Backdrop click closes; any other press inside the chrome keeps
+      // focus in the input — preventDefault on mousedown cancels the
+      // focus shift, not the click, so rows still run their command.
+      if (e.target === this.root) {
+        this.close();
+        return;
+      }
+      if (e.target !== this.input) e.preventDefault();
+    });
+    // Escape closes from any focus: a click that slipped focus to the
+    // body must not strand the palette (the input handler alone would
+    // never see the key). Idempotent — close() no-ops when hidden.
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !this.root.hidden) {
+        e.preventDefault();
+        this.close();
+      }
     });
     this.list.addEventListener('click', e => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.palette-row');
