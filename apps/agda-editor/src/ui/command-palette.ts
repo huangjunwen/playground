@@ -57,7 +57,14 @@ export function commandLabel(command: AppCommand): string {
  * Normalize a keyboard event into a binding segment ('Ctrl+L',
  * '⌘+Space', 'Ctrl+Shift+P') or null when the event carries no
  * command modifier, is alt-ed, or is a bare modifier key. Pure over
- * the four event fields it reads.
+ * the five event fields it reads.
+ *
+ * IME note: when an input method claims a combo (fcitx/ibus use
+ * Ctrl+Space as the system IME toggle — it collides with Agda's give
+ * chord), the keydown surfaces with the key blanked out — observed as
+ * "Process" (keyCode 229), "", or "Unidentified" — while the physical
+ * key still survives in `code`, so for those events the binding is
+ * recovered from it.
  */
 export function bindingOfEvent(event: {
   key: string;
@@ -65,12 +72,25 @@ export function bindingOfEvent(event: {
   metaKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
+  code?: string;
 }): string | null {
   if (event.altKey) return null;
   if (!event.ctrlKey && !event.metaKey) return null;
-  const key = event.key === ' ' ? 'Space' : event.key.length === 1 ? event.key.toUpperCase() : null;
+  const key = segmentKey(event.key, event.code);
   if (key === null) return null; // modifiers, arrows, etc. are no bindings
   return event.shiftKey ? `${modKey}+Shift+${key}` : `${modKey}+${key}`;
+}
+
+/** Event key → binding segment, with an IME `code` fallback. */
+function segmentKey(key: string, code: string | undefined): string | null {
+  if (key === ' ') return 'Space';
+  if (key.length === 1) return key.toUpperCase();
+  if (key === 'Process' || key === '' || key === 'Unidentified') {
+    if (code === 'Space') return 'Space';
+    if (code?.startsWith('Key')) return code.slice('Key'.length);
+    if (code?.startsWith('Digit')) return code.slice('Digit'.length);
+  }
+  return null;
 }
 
 export interface SequenceMatch {

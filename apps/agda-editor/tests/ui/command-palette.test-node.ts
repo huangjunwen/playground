@@ -75,6 +75,61 @@ describe('bindingOfEvent', () => {
     ).toBe(`${modKey}+C`);
   });
 
+  it('recovers the binding from code on IME-processed events', () => {
+    // what fcitx/ibus deliver for their Ctrl+Space IME toggle
+    expect(
+      bindingOfEvent({
+        key: 'Process',
+        code: 'Space',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBe(`${modKey}+Space`);
+    expect(
+      bindingOfEvent({
+        key: 'Process',
+        code: 'KeyL',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBe(`${modKey}+L`);
+    // no code to fall back on → still invisible
+    expect(
+      bindingOfEvent({
+        key: 'Process',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBeNull();
+    // real-world capture on Linux/fcitx: key blanked to Unidentified
+    expect(
+      bindingOfEvent({
+        key: 'Unidentified',
+        code: 'Space',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBe(`${modKey}+Space`);
+    expect(
+      bindingOfEvent({
+        key: 'Unidentified',
+        code: 'Digit1',
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+      }),
+    ).toBe(`${modKey}+1`);
+  });
+
   it('rejects plain keys, alt combos, and bare modifiers', () => {
     expect(
       bindingOfEvent({ key: 'l', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false }),
