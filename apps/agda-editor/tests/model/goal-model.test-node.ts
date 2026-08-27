@@ -18,6 +18,8 @@ import { EditorState, Transaction } from '@codemirror/state';
 import type { InteractionPoint } from '@playground/language-backend-agda';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  caseClausesText,
+  caseReplacementTransaction,
   expandGoalsTransaction,
   type GoalRecord,
   getGoals,
@@ -342,5 +344,60 @@ describe('giveReplacementTransaction', () => {
 
     expect(tr.annotation(systemTransaction)).toBe(true);
     expect(tr.annotation(Transaction.addToHistory)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case replacement transaction — MakeCase commit
+// ---------------------------------------------------------------------------
+
+describe('caseClausesText', () => {
+  it('joins a Function split as plain lines', () => {
+    expect(caseClausesText('Function', ['f zero = zero', 'f (suc n) = suc (f n)'])).toBe(
+      'f zero = zero\nf (suc n) = suc (f n)',
+    );
+  });
+
+  it('indents an ExtendedLambda split under a `λ where` head', () => {
+    expect(caseClausesText('ExtendedLambda', ['zero → zero', 'suc n → suc (go n)'])).toBe(
+      'λ where\n  zero → zero\n  suc n → suc (go n)',
+    );
+  });
+});
+
+describe('caseReplacementTransaction', () => {
+  const CASE_DOC = 'a = {! n !}\nb = {! y !}'; // hole 0: [4, 11); hole 1: [16, 23)
+
+  it('replaces the hole with the clauses, parks the cursor, drops the goal, remaps survivors', () => {
+    const state = makeStateWithGoals(CASE_DOC, [
+      { id: 0, from: 4, to: 11 },
+      { id: 1, from: 16, to: 23 },
+    ]);
+    const goal = { id: 0, from: 4, to: 11 } as const;
+
+    // 7-char hole → 31-char insert (delta +24): survivor shifts to [40, 47).
+    const tr = state.update(
+      caseReplacementTransaction(state, goal, 'Function', ['f zero = zero', 'f (suc n) = {! !}']),
+    );
+
+    expect(tr.state.doc.toString()).toBe('a = f zero = zero\nf (suc n) = {! !}\nb = {! y !}');
+    expect(tr.state.selection.main.head).toBe(4);
+    expect(getGoals(tr.state)).toEqual([{ id: 1, from: 40, to: 47 }]);
+    expect(tr.annotation(systemTransaction)).toBe(true);
+    expect(tr.annotation(Transaction.addToHistory)).toBe(false);
+  });
+
+  it('commits an ExtendedLambda block through the same shape', () => {
+    const state = makeStateWithGoals(CASE_DOC, [{ id: 0, from: 4, to: 11 }]);
+
+    const tr = state.update(
+      caseReplacementTransaction(state, { id: 0, from: 4, to: 11 }, 'ExtendedLambda', [
+        'zero → zero',
+      ]),
+    );
+
+    expect(tr.state.doc.toString()).toBe('a = λ where\n  zero → zero\nb = {! y !}');
+    expect(getGoals(tr.state)).toEqual([]);
+    expect(tr.state.selection.main.head).toBe(4);
   });
 });

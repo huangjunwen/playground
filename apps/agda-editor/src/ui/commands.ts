@@ -23,11 +23,16 @@ import type { EditorView } from '@codemirror/view';
 import { appendEventTransaction } from '../model/observability-model';
 import type { ThemePref } from '../model/prefs';
 import {
+  autoFromCursorCommand,
   type CtxAccessor,
+  caseOrIntroFromCursorCommand,
   giveFromCursorCommand,
+  goalQueryCommand,
   loadCommand,
   nextGoalCommand,
   prevGoalCommand,
+  refineFromCursorCommand,
+  solveFromCursorCommand,
 } from './goal-keymap';
 
 export type CommandCategory = 'Agda' | 'File' | 'View';
@@ -107,6 +112,59 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       keybinding: `${agdaChordRoot} ${modKey}+Space`,
       enabled: backendOnline,
       run: view => guarded('give: backend offline', giveFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.goal-and-context',
+      title: 'Show goal type and context',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+T`,
+      enabled: backendOnline,
+      run: view =>
+        guarded(
+          'goal-and-context: backend offline',
+          goalQueryCommand(env.getCtx, 'goal-and-context'),
+        )(view),
+    },
+    {
+      id: 'agda.context',
+      title: 'Show the goal context',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+E`,
+      enabled: backendOnline,
+      run: view =>
+        guarded('context: backend offline', goalQueryCommand(env.getCtx, 'context'))(view),
+    },
+    {
+      id: 'agda.refine',
+      title: 'Refine the goal',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+R`,
+      enabled: backendOnline,
+      run: view => guarded('refine: backend offline', refineFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.auto',
+      title: 'Auto (proof search)',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+A`,
+      enabled: backendOnline,
+      run: view => guarded('auto: backend offline', autoFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.case',
+      title: 'Case split (intro on an empty goal)',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+C`,
+      enabled: backendOnline,
+      run: view => guarded('case: backend offline', caseOrIntroFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.solve',
+      title: 'Solve the goal',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+S`,
+      enabled: backendOnline,
+      run: view => guarded('solve: backend offline', solveFromCursorCommand(env.getCtx))(view),
     },
     {
       id: 'agda.next-goal',

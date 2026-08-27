@@ -1,17 +1,27 @@
 /**
  * Goal keymap — the editor-side halves of the commands: read the cursor
- * and goal model, then either call the command layer (load/give, via a
- * lazy ExecuteContext — the backend boots async) or move the selection
- * (next/previous goal). Pure state math (goal under cursor, interior
- * text, next/previous target) lives in exported functions so node
- * tests cover it without a transport; the bindings themselves live in
- * app-keymap / the palette.
+ * and goal model, then call the command layer (load/give/refine/auto/
+ * case/solve/query, via a lazy ExecuteContext — the backend boots async)
+ * or move the selection (next/previous goal). Pure state math (goal
+ * under cursor, interior text, next/previous target) lives in exported
+ * functions so node tests cover it without a transport; the bindings
+ * themselves live in app-keymap / the palette.
  */
 
 import type { EditorState, TransactionSpec } from '@codemirror/state';
 import type { Command } from '@codemirror/view';
 import { EditorView } from '@codemirror/view';
-import { type ExecuteContext, executeGive, executeLoad } from '../integration/commands';
+import {
+  type ExecuteContext,
+  executeAuto,
+  executeCaseOrIntro,
+  executeGive,
+  executeLoad,
+  executeQuery,
+  executeRefine,
+  executeSolve,
+} from '../integration/commands';
+import { span } from '../integration/coords';
 import { type GoalRecord, getGoals, goalAt, HOLE_BOUNDARY } from '../model/goal-model';
 import { appendEventTransaction } from '../model/observability-model';
 
@@ -182,25 +192,92 @@ export function loadCommand(getCtx: CtxAccessor): Command {
 }
 
 /**
+ * Shared spine for goal commands: resolve the backend ctx and the goal
+ * to act on, then hand both to `run`. A missing backend returns false
+ * (letting a guarded wrapper narrate); a missing goal consumes the key
+ * and says why via the observability log.
+ */
+function withGoal(
+  getCtx: CtxAccessor,
+  note: string,
+  run: (ctx: ExecuteContext, goal: GoalRecord, view: EditorView) => void,
+): Command {
+  return view => {
+    const ctx = getCtx();
+    if (ctx === undefined) return false;
+    const goal = goalUnderCursor(view.state);
+    if (goal === undefined) {
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      return true;
+    }
+    run(ctx, goal, view);
+    return true;
+  };
+}
+
+/**
  * Give the goal under the cursor (falling back to the first visible one)
  * its own interior text — the emacs interaction, no prompt. Empty
  * interior consumes the key and says why via the observability log.
  */
 export function giveFromCursorCommand(getCtx: CtxAccessor): Command {
-  return view => {
-    const ctx = getCtx();
-    if (ctx === undefined) return false;
-    const goal = goalUnderCursor(view.state);
-    const payload = goal === undefined ? '' : interiorOf(view.state, goal);
-    if (goal === undefined || payload === '') {
+  return withGoal(getCtx, 'give: no expression under cursor', (ctx, goal, view) => {
+    const payload = interiorOf(view.state, goal);
+    if (payload === '') {
       view.dispatch(
         appendEventTransaction('warn', 'ui', { note: 'give: no expression under cursor' }),
       );
-      return true;
+      return;
     }
     void executeGive(ctx, goal.id, payload);
-    return true;
-  };
+  });
+}
+
+/** Show the goal's type and context, or just its context (C-t / C-e). */
+export function goalQueryCommand(
+  getCtx: CtxAccessor,
+  kind: 'goal-and-context' | 'context',
+): Command {
+  const note = `${kind}: no goal under cursor`;
+  return withGoal(getCtx, note, (ctx, goal, view) => {
+    const range = span(view.state.doc, goal.from, goal.to);
+    const cmd =
+      kind === 'context'
+        ? ctx.builder.context(goal.id, { range })
+        : ctx.builder.goalTypeContext(goal.id, { range });
+    void executeQuery(ctx, cmd);
+  });
+}
+
+/** Refine the goal (C-r): intro a lambda/helper, server picks the shape. */
+export function refineFromCursorCommand(getCtx: CtxAccessor): Command {
+  return withGoal(getCtx, 'refine: no goal under cursor', (ctx, goal) => {
+    void executeRefine(ctx, goal.id);
+  });
+}
+
+/** Mimer proof search on the goal (C-a). */
+export function autoFromCursorCommand(getCtx: CtxAccessor): Command {
+  return withGoal(getCtx, 'auto: no goal under cursor', (ctx, goal) => {
+    void executeAuto(ctx, goal.id);
+  });
+}
+
+/**
+ * Case split on the goal's interior variable (C-c); an empty interior
+ * degrades to the intro tactic — exactly Cmd_refine_or_intro upstream.
+ */
+export function caseOrIntroFromCursorCommand(getCtx: CtxAccessor): Command {
+  return withGoal(getCtx, 'case: no goal under cursor', (ctx, goal, view) => {
+    void executeCaseOrIntro(ctx, goal.id, interiorOf(view.state, goal));
+  });
+}
+
+/** Solve the goal with its recorded metavariable instantiation (C-s). */
+export function solveFromCursorCommand(getCtx: CtxAccessor): Command {
+  return withGoal(getCtx, 'solve: no goal under cursor', (ctx, goal) => {
+    void executeSolve(ctx, goal.id);
+  });
 }
 
 /** Select the next goal's hole interior and scroll it into view. */

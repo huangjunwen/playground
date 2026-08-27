@@ -23,8 +23,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type EditorViewLike,
   ExecuteContext,
+  executeAuto,
+  executeCaseOrIntro,
   executeGive,
   executeLoad,
+  executeQuery,
+  executeRefine,
+  executeSolve,
+  formatGoalInfo,
   responseDispatcher,
 } from '../../src/integration/commands';
 import { posAt, span } from '../../src/integration/coords';
@@ -490,6 +496,369 @@ describe('executeGive', () => {
 
     expect(view.state.doc.toString()).toBe('a = x\nb = {! y !}');
     expect(getGoals(view.state)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Display queries — goal type / context (C-c C-t, C-c C-e)
+// ---------------------------------------------------------------------------
+
+describe('formatGoalInfo', () => {
+  it('renders each GoalInfo variant as display lines', () => {
+    expect(formatGoalInfo({ kind: 'CurrentGoal', rewrite: 'AsIs', type: 'Nat' })).toEqual([
+      'Goal: Nat',
+    ]);
+    expect(
+      formatGoalInfo({
+        kind: 'GoalType',
+        rewrite: 'AsIs',
+        typeAux: { kind: 'GoalOnly' },
+        type: 'Nat → Nat',
+        entries: [
+          { originalName: 'x', reifiedName: 'x', binding: 'x : Nat', inScope: true },
+          { originalName: 'y', reifiedName: 'y', binding: 'y : Bool', inScope: false },
+        ],
+        boundary: [],
+        outputForms: [],
+      }),
+    ).toEqual(['Goal: Nat → Nat', 'x : Nat', 'y : Bool']);
+    expect(formatGoalInfo({ kind: 'InferredType', expr: 'Nat' })).toEqual(['Type: Nat']);
+    expect(
+      formatGoalInfo({ kind: 'NormalForm', computeMode: 'DefaultCompute', expr: 'suc zero' }),
+    ).toEqual(['suc zero']);
+    expect(formatGoalInfo({ kind: 'HelperFunction', signature: 'go : Nat → Nat' })).toEqual([
+      'go : Nat → Nat',
+    ]);
+  });
+});
+
+describe('executeQuery', () => {
+  it('streams goal type and context lines into runningInfo, touching nothing else', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'ClearRunningInfo' },
+        { kind: 'RunningInfo', debugLevel: 1, message: 'Checking' },
+        {
+          kind: 'DisplayInfo',
+          info: {
+            kind: 'GoalSpecific',
+            interactionPoint: point(0, 4, 9),
+            goalInfo: {
+              kind: 'GoalType',
+              rewrite: 'AsIs',
+              typeAux: { kind: 'GoalOnly' },
+              type: 'Nat',
+              entries: [{ originalName: 'x', reifiedName: 'x', binding: 'x : Nat', inScope: true }],
+              boundary: [],
+              outputForms: [],
+            },
+          },
+        },
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeQuery(ctx, ctx.builder.goalTypeContext(0, { range: span(view.state.doc, 4, 9) }));
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('Cmd_goal_type_context AsIs 0');
+    expect(getSession(view.state).runningInfo).toEqual(['Checking', 'Goal: Nat', 'x : Nat']);
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
+  });
+
+  it('renders a Context response as its binding lines', async () => {
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [
+        {
+          kind: 'DisplayInfo',
+          info: {
+            kind: 'Context',
+            interactionPoint: point(0, 4, 9),
+            context: [
+              { originalName: 'x', reifiedName: 'x', binding: 'x : Nat', inScope: true },
+              { originalName: 'y', reifiedName: 'y', binding: 'y : Bool', inScope: true },
+            ],
+          },
+        },
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeQuery(ctx, ctx.builder.context(0, { range: span(view.state.doc, 4, 9) }));
+
+    expect((ctx as unknown as { view: EditorViewLike }).view).toBe(view); // shape sanity
+    expect(getSession(view.state).runningInfo).toEqual(['x : Nat', 'y : Bool']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Goal actions — refine / auto / case / solve
+// ---------------------------------------------------------------------------
+
+/** AllGoalsWarnings snapshot typing every listed point as Nat. */
+const allGoalsSnapshot = (points: InteractionPoint[]): AgdaResponse => ({
+  kind: 'DisplayInfo',
+  info: {
+    kind: 'AllGoalsWarnings',
+    visibleGoals: points.map(p => ({ kind: 'OfType', constraintObj: p, type: 'Nat' })),
+    invisibleGoals: [],
+    warnings: [],
+    errors: [],
+  },
+});
+
+describe('executeRefine', () => {
+  it('commits the refined hole like a give, with fresh goals from the snapshot', async () => {
+    const doc = 'a = {! !}\nb = {! !}';
+    const { view, ctx, stream } = makeContext(
+      doc,
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { str: 'λ x → ?' } },
+        // New-doc coordinates: the `?` inside `λ x → ?` sits at [10, 11).
+        {
+          kind: 'InteractionPoints',
+          interactionPoints: [point(2, 10, 11), point(1, 16, 21)],
+        },
+        allGoalsSnapshot([point(2, 10, 11), point(1, 16, 21)]),
+        { kind: 'End' },
+      ],
+      [
+        { id: 0, from: 4, to: 9 },
+        { id: 1, from: 14, to: 19 },
+      ],
+    );
+
+    await executeRefine(ctx, 0);
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('Cmd_refine 0');
+    expect(view.state.doc.toString()).toBe('a = λ x → {!   !}\nb = {! !}');
+    // Survivor shifts twice: +2 for the hole→`λ x → ?` replacement, +6 more
+    // when goal 2's `?` expands into a full hole (16+6, 21+6).
+    expect(getGoals(view.state)).toEqual([
+      { id: 2, from: 10, to: 17, typeString: 'Nat' },
+      { id: 1, from: 22, to: 27, typeString: 'Nat' },
+    ]);
+    expect(getSession(view.state).busy).toBe(false);
+  });
+
+  it('does not touch the backend when the goal id is unknown', async () => {
+    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+
+    await expect(executeRefine(ctx, 999)).rejects.toThrow('999');
+
+    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('leaves the doc untouched when agda reports an error', async () => {
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [errorResponse('cannot refine')],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeRefine(ctx, 0);
+
+    expect(getSession(view.state).error).toContain('cannot refine');
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
+  });
+});
+
+describe('executeAuto', () => {
+  it('commits a GiveAction hit like a give', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { str: 'suc zero' } },
+        { kind: 'InteractionPoints', interactionPoints: [] },
+        allGoalsSnapshot([]),
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeAuto(ctx, 0);
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('Cmd_autoOne AsIs 0');
+    expect(view.state.doc.toString()).toBe('a = suc zero');
+    expect(getGoals(view.state)).toEqual([]);
+  });
+
+  it('commits a Mimer solution when no GiveAction arrived', async () => {
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'Mimer', solution: 'zero' },
+        { kind: 'InteractionPoints', interactionPoints: [] },
+        allGoalsSnapshot([]),
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeAuto(ctx, 0);
+
+    expect(view.state.doc.toString()).toBe('a = zero');
+    expect(getGoals(view.state)).toEqual([]);
+  });
+
+  it('narrates a miss through the Auto info lines and changes nothing', async () => {
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'Mimer', solution: null },
+        { kind: 'DisplayInfo', info: { kind: 'Auto', info: 'No solution found' } },
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeAuto(ctx, 0);
+
+    expect(getSession(view.state).runningInfo).toEqual(['No solution found']);
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
+  });
+});
+
+describe('executeCaseOrIntro', () => {
+  it('case-splits the hole and reloads so the fresh clauses register their goals', async () => {
+    // The stream answers by command: the split, then the follow-up load.
+    const view = makeView('a = {! n !}');
+    view.dispatch({ effects: [setGoals.of([{ id: 0, from: 4, to: 11 }])] });
+    const syncToVfs = vi.fn(async () => {});
+    const stream = vi.fn(async function* (cmd: IOTCMCommand) {
+      if (cmd.kind === 'Cmd_make_case') {
+        yield {
+          kind: 'MakeCase',
+          interactionPoint: point(0, 4, 11),
+          variant: 'Function',
+          clauses: ['f zero = ?', 'f (suc n) = ?'],
+        } as AgdaResponse;
+        yield { kind: 'End' } as AgdaResponse;
+        return;
+      }
+      // Clauses land as: 'a = f zero = ?\nf (suc n) = ?' — the two `?`
+      // sit at [13, 14) and [27, 28).
+      yield* loadResponses([point(0, 13, 14), point(1, 27, 28)]);
+    });
+    const ctx = new ExecuteContext({ syncToVfs, stream }, view);
+
+    await executeCaseOrIntro(ctx, 0, 'n');
+
+    expect(stream).toHaveBeenCalledTimes(2);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).kind).toBe('Cmd_make_case');
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('"n"');
+    expect((stream.mock.calls[1][0] as IOTCMCommand).kind).toBe('Cmd_load');
+    expect(syncToVfs).toHaveBeenCalledTimes(2);
+    expect(view.state.doc.toString()).toBe('a = f zero = {!   !}\nf (suc n) = {!   !}');
+    // Each load-time `?`→hole expansion shifts the later goal by +6.
+    expect(getGoals(view.state)).toEqual([
+      { id: 0, from: 13, to: 20, typeString: 'Nat' },
+      { id: 1, from: 33, to: 40, typeString: 'Nat' },
+    ]);
+  });
+
+  it('leaves the doc untouched on a failed split, without the reload', async () => {
+    const view = makeView('a = {! n !}');
+    view.dispatch({ effects: [setGoals.of([{ id: 0, from: 4, to: 11 }])] });
+    const syncToVfs = vi.fn(async () => {});
+    const stream = vi.fn(async function* (cmd: IOTCMCommand) {
+      if (cmd.kind === 'Cmd_make_case') {
+        yield errorResponse('cannot split');
+        yield { kind: 'End' } as AgdaResponse;
+      }
+    });
+    const ctx = new ExecuteContext({ syncToVfs, stream }, view);
+
+    await executeCaseOrIntro(ctx, 0, 'n');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(view.state.doc.toString()).toBe('a = {! n !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 11 }]);
+  });
+
+  it('intros an empty goal through refineOrIntro and commits like a give', async () => {
+    // '{!  !}' — hole [4, 10), trimmed interior is empty → intro path.
+    const { view, ctx, stream } = makeContext(
+      'a = {!  !}',
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 10), giveResult: { str: 'λ x → ?' } },
+        { kind: 'InteractionPoints', interactionPoints: [point(1, 10, 11)] },
+        allGoalsSnapshot([point(1, 10, 11)]),
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 10 }],
+    );
+
+    await executeCaseOrIntro(ctx, 0, '');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('Cmd_refine_or_intro');
+    expect(view.state.doc.toString()).toBe('a = λ x → {!   !}');
+    expect(getGoals(view.state)).toEqual([{ id: 1, from: 10, to: 17, typeString: 'Nat' }]);
+  });
+
+  it('narrates IntroNotFound and leaves the doc untouched', async () => {
+    const { view, ctx } = makeContext(
+      'a = {!  !}',
+      [{ kind: 'DisplayInfo', info: { kind: 'IntroNotFound' } }, { kind: 'End' }],
+      [{ id: 0, from: 4, to: 10 }],
+    );
+
+    await executeCaseOrIntro(ctx, 0, '');
+
+    expect(getSession(view.state).runningInfo).toEqual(['intro: no introduction form found']);
+    expect(view.state.doc.toString()).toBe('a = {!  !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 10 }]);
+  });
+});
+
+describe('executeSolve', () => {
+  it('replaces the hole with the instantiation and drops the goal', async () => {
+    const doc = 'a = {! x !}\nb = {! y !}';
+    const { view, ctx, stream } = makeContext(
+      doc,
+      [
+        { kind: 'SolveAll', solutions: [{ interactionPoint: 0, expression: 'suc zero' }] },
+        { kind: 'End' },
+      ],
+      [
+        { id: 0, from: 4, to: 11 },
+        { id: 1, from: 16, to: 23 },
+      ],
+    );
+
+    await executeSolve(ctx, 0);
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect((stream.mock.calls[0][0] as IOTCMCommand).raw).toContain('Cmd_solveOne AsIs 0');
+    expect(view.state.doc.toString()).toBe('a = suc zero\nb = {! y !}');
+    expect(getGoals(view.state)).toEqual([{ id: 1, from: 17, to: 24 }]);
+  });
+
+  it('warns and changes nothing when the goal has no instantiation', async () => {
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [{ kind: 'SolveAll', solutions: [] }, { kind: 'End' }],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeSolve(ctx, 0);
+
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
+    const events = getEvents(view.state);
+    const warn = events.find(e => e.kind === 'Cmd_solveOne::noSolution');
+    expect(warn).toMatchObject({ level: 'warn', payload: { goalId: 0 } });
   });
 });
 

@@ -164,7 +164,7 @@ describe('matchSequence', () => {
   it('counts the chord root as a pure prefix of the agda commands', () => {
     const match = matchSequence(commands, agdaChordRoot);
     expect(match.exact).toEqual([]);
-    expect(match.prefixCount).toBe(4); // load, give, next-goal, prev-goal
+    expect(match.prefixCount).toBe(10); // load, give, 6 chord commands, next/prev-goal
   });
 
   it('completes a full chord to exactly one command', () => {
@@ -211,7 +211,13 @@ describe('filterCommands', () => {
 
   it('combines the key prefix with the typed query', () => {
     const rows = filterCommands(commands, 'next', agdaChordRoot);
-    expect(rows.map(r => r.command.id)).toEqual(['agda.next-goal']);
+    expect(rows[0]!.command.id).toBe('agda.next-goal'); // best score wins
+    expect(
+      rows
+        .map(r => r.command.id)
+        .slice()
+        .sort(),
+    ).toEqual(['agda.context', 'agda.goal-and-context', 'agda.next-goal']); // fuzzy 'next' also hits the two context commands
   });
 
   it('returns nothing for a query nothing matches', () => {
@@ -283,7 +289,17 @@ describe('command availability (backend as a projection)', () => {
   it('disables exactly the backend-dependent commands while offline', () => {
     const commands = buildCommands(stubEnv);
     const offline = commands.filter(c => c.enabled?.() === false).map(c => c.id);
-    expect(offline).toEqual(['agda.load', 'agda.give', 'file.save']);
+    expect(offline).toEqual([
+      'agda.load',
+      'agda.give',
+      'agda.goal-and-context',
+      'agda.context',
+      'agda.refine',
+      'agda.auto',
+      'agda.case',
+      'agda.solve',
+      'file.save',
+    ]);
     // Navigation and view toggles never need the backend.
     for (const command of commands) {
       if (!offline.includes(command.id)) expect(command.enabled?.() ?? true).toBe(true);

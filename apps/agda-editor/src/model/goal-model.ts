@@ -259,3 +259,47 @@ export function giveReplacementTransaction(
     annotations: [systemTransaction.of(true), Transaction.addToHistory.of(false)],
   };
 }
+
+// ---------------------------------------------------------------------------
+// Case replacement transaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Clause text a MakeCase commits: plain lines for a Function split, a
+ * `λ where` block for an ExtendedLambda split.
+ */
+export function caseClausesText(variant: 'Function' | 'ExtendedLambda', clauses: string[]): string {
+  return variant === 'Function'
+    ? clauses.join('\n')
+    : `λ where\n${clauses.map(clause => `  ${clause}`).join('\n')}`;
+}
+
+/**
+ * Transaction spec that commits a MakeCase: replace the whole hole
+ * with the split clauses (cursor parked at the first clause) and drop
+ * the goal from the list, survivors mapped to final coordinates — the
+ * same shape and annotations as {@link giveReplacementTransaction}. The
+ * clauses carry fresh holes the backend numbers only after the
+ * follow-up load re-registers them.
+ */
+export function caseReplacementTransaction(
+  state: EditorState,
+  goal: GoalRecord,
+  variant: 'Function' | 'ExtendedLambda',
+  clauses: string[],
+): TransactionSpec {
+  const insert = caseClausesText(variant, clauses);
+  const goals = getGoals(state).filter(g => g.id !== goal.id);
+  const replaced = ChangeSet.of([{ from: goal.from, to: goal.to, insert }], state.doc.length);
+  const final = goals.map(g => {
+    const from = replaced.mapPos(g.from, 1);
+    const to = Math.max(replaced.mapPos(g.to, -1), from);
+    return { ...g, from, to };
+  });
+  return {
+    changes: [{ from: goal.from, to: goal.to, insert }],
+    selection: { anchor: goal.from },
+    effects: [setGoals.of(final)],
+    annotations: [systemTransaction.of(true), Transaction.addToHistory.of(false)],
+  };
+}

@@ -22,6 +22,7 @@ import type {
   AgdaResponse,
   DisplayInfo,
   GiveResult,
+  GoalInfo,
   InteractionPoint,
   IOTCMCommand,
 } from '@playground/language-backend-agda';
@@ -32,7 +33,9 @@ import {
   HIGHLIGHTING_NONE,
 } from '@playground/language-backend-agda';
 import {
+  caseReplacementTransaction,
   expandGoalsTransaction,
+  type GoalRecord,
   getGoals,
   giveReplacementTransaction,
   goalById,
@@ -325,54 +328,296 @@ export async function executeGive(
   goalId: number,
   payload: string,
 ): Promise<void> {
-  const goal = goalById(ctx.state, goalId);
-  if (!goal) {
-    // No goal, so no command could run; the event still narrates the
-    // intended give (an empty range is harmless — nothing is sent).
-    ctx.logCommandEvent(ctx.builder.give(goalId, payload), 'error', 'error', {
-      goalId,
-      error: `goal ${goalId} not found`,
-    });
-    throw new Error(`goal ${goalId} not found`);
-  }
+  const cmd0 = ctx.builder.give(goalId, payload);
+  const goal = requireGoal(ctx, cmd0, goalId);
 
-  let giveResult: GiveResult | undefined;
-  let points: InteractionPoint[] | undefined;
-  let allGoals: Extract<DisplayInfo, { kind: 'AllGoalsWarnings' }> | undefined;
+  const acc: GoalActionAccum = {};
   const cmd = ctx.builder.give(goalId, payload, {
     range: span(ctx.state.doc, goal.from, goal.to),
   });
 
   await ctx.executeCommand(cmd, {
-    GiveAction: ({ giveResult: result }) => {
-      giveResult ??= result;
-    },
-    InteractionPoints: ({ interactionPoints }) => {
-      points = points ?? [];
-      points.push(...interactionPoints);
-    },
-    DisplayInfo: {
-      AllGoalsWarnings: info => {
-        allGoals = info;
-      },
-    },
+    ...goalActionHandlers(acc),
     // The End sentinel carries the final commit, like load. A failure (the
     // skeleton put it in the session) or a missing GiveAction leaves the
     // document untouched — nothing to clean up.
     End: () => {
       if (getSession(ctx.state).error !== undefined) return;
-      if (!giveResult) return;
-      // One dispatch, two specs: the replacement, then the sync (marked
-      // `sequential`, so its positions — in post-replacement coordinates,
-      // since a fresh goal's response position only exists in the *new*
-      // document — compose into the same transaction; one UI update).
-      const replacement = giveReplacementTransaction(ctx.state, goal, payload, giveResult);
-      const withText = ctx.state.update(replacement).state;
-      const typesById = allGoals && collectVisibleGoalTypes(allGoals.visibleGoals);
-      ctx.dispatch(
-        replacement,
-        expandGoalsTransaction(withText, syncGoals(getGoals(withText), points, typesById)),
-      );
+      if (acc.giveResult === undefined) return;
+      giveFamilyCommit(ctx, goal, payload, acc.giveResult, acc.points, acc.allGoals);
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Goal queries — display-only commands (goal type, context)
+// ---------------------------------------------------------------------------
+
+/**
+ * A GoalSpecific payload as runningInfo lines, agda-mode's goal-buffer
+ * style: the goal's type, then the context entries' bindings.
+ */
+export function formatGoalInfo(info: GoalInfo): string[] {
+  switch (info.kind) {
+    case 'CurrentGoal':
+      return [`Goal: ${info.type}`];
+    case 'GoalType':
+      return [`Goal: ${info.type}`, ...info.entries.map(entry => entry.binding)];
+    case 'InferredType':
+      return [`Type: ${info.expr}`];
+    case 'NormalForm':
+      return [info.expr];
+    case 'HelperFunction':
+      return [info.signature];
+  }
+}
+
+/**
+ * Run a display-only query (Cmd_goal_type_context, Cmd_context, …) and
+ * stream its answer into the session's runningInfo — the same surface
+ * load narrates into. GoalSpecific and Context payloads render through
+ * {@link formatGoalInfo}; RunningInfo passthrough keeps agda's own
+ * progress lines. Nothing touches the document or the goal list.
+ */
+export async function executeQuery(ctx: ExecuteContext, cmd: IOTCMCommand): Promise<void> {
+  await ctx.executeCommand(cmd, {
+    ClearRunningInfo: () => ctx.dispatch(clearRunningInfoTransaction()),
+    RunningInfo: ({ message }) => ctx.dispatch(runningInfoTransaction(message)),
+    DisplayInfo: {
+      GoalSpecific: ({ goalInfo }) => {
+        for (const line of formatGoalInfo(goalInfo)) ctx.dispatch(runningInfoTransaction(line));
+      },
+      Context: ({ context }) => {
+        for (const entry of context) ctx.dispatch(runningInfoTransaction(entry.binding));
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Goal actions — refine / auto / case / solve
+// ---------------------------------------------------------------------------
+
+/**
+ * Refine the goal with an empty expression (agda-mode's C-c C-r):
+ * introduce a lambda / helper structure. Response handling is the give
+ * family's — the GiveAction commits through the shared replacement +
+ * sync.
+ */
+export async function executeRefine(ctx: ExecuteContext, goalId: number): Promise<void> {
+  const cmd0 = ctx.builder.refine(goalId);
+  const goal = requireGoal(ctx, cmd0, goalId);
+
+  const acc: GoalActionAccum = {};
+  const cmd = ctx.builder.refine(goalId, { range: span(ctx.state.doc, goal.from, goal.to) });
+
+  await ctx.executeCommand(cmd, {
+    ...goalActionHandlers(acc),
+    End: () => {
+      if (getSession(ctx.state).error !== undefined) return;
+      if (acc.giveResult === undefined) return;
+      giveFamilyCommit(ctx, goal, '', acc.giveResult, acc.points, acc.allGoals);
+    },
+  });
+}
+
+/**
+ * Mimer proof search on one goal (agda-mode's C-c C-a). A hit arrives
+ * as a GiveAction (or a Mimer solution) and commits like give; a miss
+ * narrates itself through the Auto info lines and leaves the document
+ * untouched.
+ */
+export async function executeAuto(ctx: ExecuteContext, goalId: number): Promise<void> {
+  const cmd0 = ctx.builder.autoOne(goalId);
+  const goal = requireGoal(ctx, cmd0, goalId);
+
+  const acc: GoalActionAccum = {};
+  const cmd = ctx.builder.autoOne(goalId, { range: span(ctx.state.doc, goal.from, goal.to) });
+
+  await ctx.executeCommand(cmd, {
+    ...goalActionHandlers(acc, {
+      Auto: ({ info }) => {
+        for (const line of info.split('\n')) ctx.dispatch(runningInfoTransaction(line));
+      },
+    }),
+    End: () => {
+      if (getSession(ctx.state).error !== undefined) return;
+      const result = acc.giveResult ?? (acc.mimer == null ? undefined : { str: acc.mimer });
+      if (result === undefined) return; // miss: the Auto info narrated it
+      giveFamilyCommit(ctx, goal, '', result, acc.points, acc.allGoals);
+    },
+  });
+}
+
+/**
+ * Case split on the identifier inside the goal (agda-mode's C-c C-c).
+ * An empty goal takes the intro path instead — `refineOrIntro` — whose
+ * GiveAction commits like give.
+ *
+ * The split's MakeCase clauses replace the hole via
+ * {@link caseReplacementTransaction}; the clauses carry fresh holes the
+ * backend numbers only after the follow-up load re-registers them
+ * (agda-mode's refresh after a split). A failed split (agda error, or
+ * no MakeCase in the stream) leaves the document untouched and skips
+ * the reload.
+ */
+export async function executeCaseOrIntro(
+  ctx: ExecuteContext,
+  goalId: number,
+  interior: string,
+): Promise<void> {
+  const cmd0 =
+    interior === '' ? ctx.builder.refineOrIntro(goalId) : ctx.builder.case(goalId, interior);
+  const goal = requireGoal(ctx, cmd0, goalId);
+  const range = { range: span(ctx.state.doc, goal.from, goal.to) };
+
+  if (interior === '') {
+    const acc: GoalActionAccum = {};
+    const cmd = ctx.builder.refineOrIntro(goalId, range);
+    await ctx.executeCommand(cmd, {
+      ...goalActionHandlers(acc, {
+        IntroNotFound: () =>
+          ctx.dispatch(runningInfoTransaction('intro: no introduction form found')),
+        IntroConstructorUnknown: ({ constructors }) => {
+          ctx.dispatch(runningInfoTransaction('intro: cannot determine a constructor'));
+          ctx.dispatch(runningInfoTransaction(`candidates: ${constructors.join(' ')}`));
+        },
+      }),
+      End: () => {
+        if (getSession(ctx.state).error !== undefined) return;
+        if (acc.giveResult === undefined) return;
+        giveFamilyCommit(ctx, goal, '', acc.giveResult, acc.points, acc.allGoals);
+      },
+    });
+    return;
+  }
+
+  let split: { variant: 'Function' | 'ExtendedLambda'; clauses: string[] } | undefined;
+  const cmd = ctx.builder.case(goalId, interior, range);
+  await ctx.executeCommand(cmd, {
+    MakeCase: ({ variant, clauses }) => {
+      split ??= { variant, clauses };
+    },
+    End: () => {
+      if (getSession(ctx.state).error !== undefined || split === undefined) return;
+      ctx.dispatch(caseReplacementTransaction(ctx.state, goal, split.variant, split.clauses));
+    },
+  });
+
+  // Only a committed split needs the refresh: the clauses' fresh holes
+  // exist in the document but not in the goal list until a load numbers
+  // them.
+  if (split !== undefined && getSession(ctx.state).error === undefined) {
+    await executeLoad(ctx);
+  }
+}
+
+/**
+ * Solve the goal with its internal instantiation (agda-mode's C-c C-s):
+ * the SolveAll response's expression replaces the hole — a plain give
+ * replacement, no points snapshot — and the goal drops from the list.
+ * An uninstantiated goal narrates a warn event and changes nothing.
+ */
+export async function executeSolve(ctx: ExecuteContext, goalId: number): Promise<void> {
+  const cmd0 = ctx.builder.solveOne(goalId);
+  const goal = requireGoal(ctx, cmd0, goalId);
+
+  let solution: string | undefined;
+  const cmd = ctx.builder.solveOne(goalId, { range: span(ctx.state.doc, goal.from, goal.to) });
+
+  await ctx.executeCommand(cmd, {
+    SolveAll: ({ solutions }) => {
+      const hit = solutions.find(s => s.interactionPoint === goalId);
+      if (hit !== undefined) solution ??= hit.expression;
+    },
+    End: () => {
+      if (getSession(ctx.state).error !== undefined) return;
+      if (solution === undefined) {
+        ctx.logCommandEvent(cmd, 'warn', 'noSolution', { goalId });
+        return;
+      }
+      ctx.dispatch(giveReplacementTransaction(ctx.state, goal, solution, { str: solution }));
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shared goal-action plumbing
+// ---------------------------------------------------------------------------
+
+/** What the give-family commands accumulate from a response stream. */
+interface GoalActionAccum {
+  giveResult?: GiveResult;
+  /** Mimer's solution, or null when it found none. */
+  mimer?: string | null;
+  points?: InteractionPoint[];
+  allGoals?: Extract<DisplayInfo, { kind: 'AllGoalsWarnings' }>;
+}
+
+/**
+ * Goal lookup shared by every goal-scoped command: narrate the intended
+ * command and throw when the id is stale (a local check, before any
+ * I/O). `cmd` is the range-less probe used only for the narration.
+ */
+function requireGoal(ctx: ExecuteContext, cmd: IOTCMCommand, goalId: number): GoalRecord {
+  const goal = goalById(ctx.state, goalId);
+  if (goal !== undefined) return goal;
+  ctx.logCommandEvent(cmd, 'error', 'error', {
+    goalId,
+    error: `goal ${goalId} not found`,
+  });
+  throw new Error(`goal ${goalId} not found`);
+}
+/**
+ * Handler-table skeleton every give-family command (give, refine, auto,
+ * intro) shares: accumulate the GiveAction, Mimer's solution, and the
+ * goal snapshot (InteractionPoints + AllGoalsWarnings) the commit needs.
+ * `displayExtra` extends the DisplayInfo table with command-specific
+ * payloads — auto's miss info, intro's not-found notes.
+ */
+function goalActionHandlers(
+  acc: GoalActionAccum,
+  displayExtra: DisplayInfoHandlers = {},
+): ResponseHandlers {
+  return {
+    GiveAction: ({ giveResult }) => {
+      acc.giveResult ??= giveResult;
+    },
+    Mimer: ({ solution }) => {
+      acc.mimer ??= solution;
+    },
+    InteractionPoints: ({ interactionPoints }) => {
+      acc.points ??= [];
+      acc.points.push(...interactionPoints);
+    },
+    DisplayInfo: {
+      AllGoalsWarnings: info => {
+        acc.allGoals = info;
+      },
+      ...displayExtra,
+    },
+  };
+}
+
+/**
+ * The give-family End commit, as one two-spec dispatch (one UI update):
+ * the replacement spec first, then the goal-list sync built against the
+ * pure post-replacement state — see executeGive for the coordinate
+ * reasoning.
+ */
+function giveFamilyCommit(
+  ctx: ExecuteContext,
+  goal: GoalRecord,
+  payload: string,
+  giveResult: GiveResult,
+  points: InteractionPoint[] | undefined,
+  allGoals: Extract<DisplayInfo, { kind: 'AllGoalsWarnings' }> | undefined,
+): void {
+  const replacement = giveReplacementTransaction(ctx.state, goal, payload, giveResult);
+  const withText = ctx.state.update(replacement).state;
+  const typesById = allGoals && collectVisibleGoalTypes(allGoals.visibleGoals);
+  ctx.dispatch(
+    replacement,
+    expandGoalsTransaction(withText, syncGoals(getGoals(withText), points, typesById)),
+  );
 }
