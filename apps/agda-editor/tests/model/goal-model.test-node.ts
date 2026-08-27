@@ -87,6 +87,40 @@ describe('goalModelField — edit remapping', () => {
     expect(getGoals(s2)).toEqual([{ id: 0, from: 4, to: 4, typeString: 'Nat' }]);
   });
 
+  it('undo re-inserting the hole text resurrects the dead record', () => {
+    const deleted = makeStateWithGoals(DOC, [HOLE]).update({
+      changes: { from: 4, to: 11 },
+      userEvent: 'delete.selection',
+    }).state;
+    expect(getGoals(deleted)).toEqual([{ id: 0, from: 4, to: 4, typeString: 'Nat' }]);
+    const undone = deleted.update({
+      changes: { from: 4, to: 4, insert: '{! x !}' },
+      userEvent: 'undo',
+    }).state;
+    expect(getGoals(undone)).toEqual([{ id: 0, from: 4, to: 11, typeString: 'Nat' }]);
+  });
+
+  it('undo of a non-hole insertion at the dead record stays dead', () => {
+    const deleted = makeStateWithGoals(DOC, [HOLE]).update({
+      changes: { from: 4, to: 11 },
+      userEvent: 'delete.selection',
+    }).state;
+    const undone = deleted.update({ changes: { from: 4, insert: 'x' }, userEvent: 'undo' }).state;
+    expect(getGoals(undone)).toEqual([{ id: 0, from: 5, to: 5, typeString: 'Nat' }]);
+  });
+
+  it('a plain (non-undo) hole-shaped insert at the dead record stays dead', () => {
+    const deleted = makeStateWithGoals(DOC, [HOLE]).update({
+      changes: { from: 4, to: 11 },
+      userEvent: 'delete.selection',
+    }).state;
+    const retyped = deleted.update({
+      changes: { from: 4, insert: '{! !}' },
+      userEvent: 'input.type',
+    }).state;
+    expect(getGoals(retyped)).toEqual([{ id: 0, from: 9, to: 9, typeString: 'Nat' }]);
+  });
+
   it('setGoals replaces the whole list', () => {
     const s2 = makeStateWithGoals(DOC, [HOLE]).update({
       effects: setGoals.of([{ id: 5, from: 0, to: 1 }]),
@@ -173,6 +207,13 @@ describe('syncGoals', () => {
     );
 
     expect(goals).toEqual([{ id: 3, from: 30, to: 37 }]);
+  });
+
+  it('resurrects a dead (zero-width) record from the response range', () => {
+    // The hole was deleted locally; ALS still reports the point — the
+    // dead prior's collapsed position must not win over the fresh range.
+    const goals = syncGoals([{ id: 2, from: 15, to: 15 }], [point(2, 16, 23)], new Map());
+    expect(goals).toEqual([{ id: 2, from: 15, to: 22 }]);
   });
 
   it('keeps survivor type strings when no AllGoalsWarnings was seen (undefined map)', () => {

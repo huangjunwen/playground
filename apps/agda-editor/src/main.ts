@@ -26,10 +26,12 @@ import { agdaChordRoot, buildCommands } from './ui/commands';
 import { EventsPanel } from './ui/events-panel';
 import { goalDecorations, goalStyleTheme } from './ui/goal-decorations';
 import { goalBoundaryGuard } from './ui/goal-guard';
+import { goalBackspaceCommand, goalVimDeleteCommand } from './ui/goal-keymap';
 import { GoalsPanel } from './ui/goals-panel';
 import { clamp, wireDrag } from './ui/resize';
 import { SessionPanel } from './ui/session-panel';
 import { applyTheme, watchSystemTheme } from './ui/theme';
+import { clampVimCursor } from './ui/vim-cursor';
 
 const FILE_PATH = `${DEFAULT_ALS_WORKSPACE}/Main.agda`;
 
@@ -56,7 +58,9 @@ function setTheme(theme: ThemePref): void {
 function toggleVim(): void {
   prefs = { ...prefs, vim: !prefs.vim };
   savePrefs(prefs);
-  view.dispatch({ effects: vimCompartment.reconfigure(prefs.vim ? vim() : []) });
+  view.dispatch({
+    effects: vimCompartment.reconfigure(prefs.vim ? [vim(), clampVimCursor] : []),
+  });
   palette.sync();
 }
 
@@ -191,14 +195,18 @@ view = new EditorView({
     doc: '',
     extensions: [
       // Before basicSetup, so the bare Mod-C chord root wins over the
-      // default keymap's copy (it still falls through with a selection).
+      // default keymap's copy (it still falls through with a selection),
+      // and before the vim extension, so the goal-boundary dance keys
+      // (Backspace / x) get first refusal.
       keymap.of([
         ...appKeymap({ openChordRoot: () => palette.open(agdaChordRoot) }),
+        { key: 'Backspace', run: goalBackspaceCommand },
+        { key: 'x', run: goalVimDeleteCommand },
         indentWithTab,
       ]),
       basicSetup,
       agda(),
-      vimCompartment.of(prefs.vim ? vim() : []),
+      vimCompartment.of(prefs.vim ? [vim(), clampVimCursor] : []),
       goalModelField,
       sessionModelField,
       observabilityModelField,

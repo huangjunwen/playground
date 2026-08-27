@@ -89,11 +89,13 @@ describe('filterGoalBoundaries — reject boundary-splitting deletes', () => {
 });
 
 describe('filterGoalBoundaries — snap straddling selections', () => {
-  it('snaps a cursor on a boundary into the whole hole', () => {
+  it('lets a cursor on a boundary through (the vim layer owns those positions)', () => {
+    // Snapping empty cursors to the hole start is what teleported vim
+    // motions back out of the goal; a caret at a boundary is legal.
     const s = makeState(DOC, [HOLE]);
     const res = s.update({ selection: EditorSelection.cursor(5) });
-    expect(res.state.selection.main.from).toBe(4);
-    expect(res.state.selection.main.to).toBe(4);
+    expect(res.state.selection.main.from).toBe(5);
+    expect(res.state.selection.main.to).toBe(5);
   });
 
   it('does not snap a cursor inside the interior', () => {

@@ -64,13 +64,37 @@ export const goalModelField = StateField.define<GoalRecord[]>({
     // in (its builder mapped it) — take it verbatim, no second remap.
     if (synced !== undefined) return synced;
     if (!tr.docChanged) return value;
+    // Undo of a whole-hole deletion re-inserts the hole text at the very
+    // point the record collapsed to — mapPos cannot recover a range from a
+    // point, so dead records are resurrected by matching the re-inserted
+    // hole text directly (final coordinates, not remapped).
+    const resurrections = tr.annotation(Transaction.userEvent) === 'undo' ? holeInsertions(tr) : [];
     return value.map(g => {
+      if (g.from === g.to) {
+        const hit = resurrections.find(([from]) => from === g.from);
+        if (hit !== undefined) return { ...g, from: hit[0], to: hit[1] };
+      }
       const from = tr.changes.mapPos(g.from, 1);
       const to = Math.max(tr.changes.mapPos(g.to, -1), from);
       return { ...g, from, to };
     });
   },
 });
+
+/**
+ * Pure insertions of hole-shaped text (`{!…!}`) in `tr`, as final
+ * [from, to] pairs — the shape history restores when a whole-hole
+ * deletion is undone.
+ */
+function holeInsertions(tr: Transaction): [number, number][] {
+  const hits: [number, number][] = [];
+  tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    if (fromA !== toA || inserted.length < 2 * HOLE_BOUNDARY) return;
+    const text = inserted.sliceString(0);
+    if (text.startsWith('{!') && text.endsWith('!}')) hits.push([fromB, toB]);
+  });
+  return hits;
+}
 
 export function getGoals(state: { field<T>(f: StateField<T>): T }): GoalRecord[] {
   return state.field(goalModelField);
@@ -128,7 +152,10 @@ export function syncGoals(
   const goals: GoalRecord[] = [];
   for (const p of points) {
     const prior = priorById.get(p.id);
-    if (prior === undefined) {
+    // A dead record (zero-width after its hole was deleted) carries no
+    // usable position — fall through to the response range, which is the
+    // hole's authoritative span in the freshly loaded document.
+    if (prior === undefined || prior.from >= prior.to) {
       if (p.range.length === 0) {
         console.warn(`syncGoals: dropping malformed interaction point ${p.id} (empty range)`);
         continue;

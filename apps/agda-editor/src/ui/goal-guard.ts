@@ -64,12 +64,17 @@ export function filterGoalBoundaries(
     if (rejected) return [];
   }
 
-  // Selection-only transactions: snap any range that straddles a hole so it
-  // spans the whole hole instead of cutting through its boundary. (Skipped
-  // for doc-changing transactions so we never drop their text changes.)
+  // Selection-only transactions: snap any non-empty range that straddles
+  // a hole so it spans the whole hole instead of cutting through its
+  // boundary. (Skipped for doc-changing transactions so we never drop
+  // their text changes.) Empty cursors pass through untouched — a caret
+  // on a boundary char is legal editing ground (the vim layer snaps the
+  // pair-splitting positions separately), and teleporting it to the
+  // hole's start is what kept vim motions out of goals.
   if (!tr.docChanged && tr.selection) {
     let changed = false;
     const ranges = tr.selection.ranges.map(r => {
+      if (r.empty) return r;
       let lo = Math.min(r.from, r.to);
       let hi = Math.max(r.from, r.to);
       let prevLo = -1;
@@ -87,11 +92,7 @@ export function filterGoalBoundaries(
       }
       if (lo === r.from && hi === r.to) return r;
       changed = true;
-      return r.empty
-        ? EditorSelection.cursor(lo)
-        : r.from <= r.to
-          ? EditorSelection.range(lo, hi)
-          : EditorSelection.range(hi, lo);
+      return r.from <= r.to ? EditorSelection.range(lo, hi) : EditorSelection.range(hi, lo);
     });
     if (changed) {
       return { selection: EditorSelection.create(ranges, tr.selection.mainIndex) };
