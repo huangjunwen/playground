@@ -11,6 +11,7 @@ import {
   setBackendStatus,
   setBusy,
   setChecked,
+  setDiagnostics,
   setError,
 } from '../../src/model/session-model';
 import { statusCluster } from '../../src/ui/status';
@@ -60,6 +61,21 @@ describe('verdict slot (idle only, shown only when worth it)', () => {
     ).toEqual({
       kind: 'error',
     });
+  });
+
+  it('is error when the module carries non-fatal check errors (diagnostics)', () => {
+    expect(
+      statusCluster(
+        makeState([setDiagnostics.of({ warnings: [], errors: ['Termination checking failed'] })]),
+      ).verdict,
+    ).toEqual({ kind: 'error' });
+  });
+
+  it('is warning when the module carries only benign warnings', () => {
+    expect(
+      statusCluster(makeState([setDiagnostics.of({ warnings: ['UnusedVariable'], errors: [] })]))
+        .verdict,
+    ).toEqual({ kind: 'warning' });
   });
 
   it('is checked after a clean load — unsolved goals do not clear it', () => {

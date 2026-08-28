@@ -4,7 +4,9 @@
  * responseDispatcher (shape-keyed callback table): routes each response to
  * the declared callback and drops everything else. executeLoad (streaming):
  * busy/log/error dispatch in real time as responses arrive; goals rebuild in
- * one dispatch when the stream ends, and only when the load succeeded.
+ * one dispatch when the stream ends, kept only on a command exception —
+ * recovered check failures (termination, …) land in the module diagnostics
+ * and still commit their goals.
  * executeGive (streaming like load): goal lookup, IOTCM command shape, and the
  * two-transaction application — giveReplacementTransaction then the
  * expandGoalsTransaction + syncGoals assembly — driven through the shared
@@ -245,6 +247,61 @@ describe('executeLoad (streaming)', () => {
     });
   });
 
+  it('records snapshot errors as diagnostics and still syncs the goals (agda ≥ 2.8 termination failures)', async () => {
+    // Wire shape observed from ALS 2.8: Cmd_load on a non-terminating
+    // definition reports no DisplayInfo.Error — the termination violation
+    // rides inside the AllGoalsWarnings snapshot's errors array. The goals
+    // it reports are real (agda's error recovery keeps them), so they
+    // commit; the failure lives in the session's diagnostics.
+    const { view, ctx } = makeContext(
+      'double : N → N\ndouble n = double n',
+      [
+        {
+          kind: 'Status',
+          status: { showImplicitArguments: false, showIrrelevantArguments: false, checked: false },
+        },
+        { kind: 'InteractionPoints', interactionPoints: [] },
+        {
+          kind: 'DisplayInfo',
+          info: {
+            kind: 'AllGoalsWarnings',
+            visibleGoals: [],
+            invisibleGoals: [],
+            warnings: [],
+            errors: [
+              {
+                message:
+                  '/root/workspace/Main.agda:5.1-6.20: error: [TerminationIssue]\nTermination checking failed for the following functions:\n double\nProblematic calls:\n double n\n (at /root/workspace/Main.agda:6.12-18)',
+              },
+            ],
+          },
+        },
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeLoad(ctx);
+
+    const session = getSession(view.state);
+    // Module diagnostics carry the failure — not the command error slot.
+    expect(session.error).toBeUndefined();
+    expect(session.diagnostics.errors.length).toBe(1);
+    expect(session.diagnostics.errors[0]).toContain('Termination checking failed');
+    expect(session.diagnostics.errors[0]).toContain('double');
+    expect(session.busy).toBe(false);
+    expect(session.checked).toBe(false);
+    // An empty-but-erroneous snapshot must not narrate the success line.
+    expect(session.runningInfo).toEqual([]);
+    // The snapshot's (empty) goal set is authoritative: the stale goal
+    // from the previous check does not survive.
+    expect(getGoals(view.state)).toEqual([]);
+    // Load is the check command — its snapshot's errors are its failure.
+    const events = getEvents(view.state);
+    const errorEvent = events.find(e => e.kind === 'Cmd_load::error');
+    expect(errorEvent).toMatchObject({ level: 'error' });
+  });
+
   it('clears the progress log when ClearRunningInfo arrives mid-stream', async () => {
     const { view, ctx } = makeContext('a = ?', [
       { kind: 'RunningInfo', debugLevel: 1, message: 'Loading interfaces' },
@@ -392,6 +449,50 @@ describe('executeGive', () => {
 
     expect(syncToVfs).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('applies the give even when the goals snapshot carries ambient module errors', async () => {
+    // Probe-observed wire: after a load with a termination violation, every
+    // give's AllGoalsWarnings still replays the module's errors — they are
+    // module state riding along, not the give's failure. The give itself
+    // succeeded (GiveAction), so the replacement commits and no error
+    // event is logged; the diagnostics just carry over.
+    const { view, ctx } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { paren: false } },
+        { kind: 'InteractionPoints', interactionPoints: [] },
+        {
+          kind: 'DisplayInfo',
+          info: {
+            kind: 'AllGoalsWarnings',
+            visibleGoals: [],
+            invisibleGoals: [],
+            warnings: [],
+            errors: [
+              {
+                message:
+                  'Main.agda:5.1-6.20: error: [TerminationIssue]\nTermination checking failed',
+              },
+            ],
+          },
+        },
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeGive(ctx, 0, 'zero');
+
+    expect(view.state.doc.toString()).toBe('a = zero');
+    expect(getGoals(view.state)).toEqual([]);
+    const session = getSession(view.state);
+    expect(session.error).toBeUndefined();
+    expect(session.diagnostics.errors.length).toBe(1);
+    expect(session.diagnostics.errors[0]).toContain('Termination checking failed');
+    // Ambient module errors are not the give's failure — no error event.
+    const events = getEvents(view.state);
+    expect(events.find(e => e.kind === 'Cmd_give::error')).toBeUndefined();
   });
 
   it('leaves the doc untouched when agda reports an error', async () => {

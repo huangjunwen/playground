@@ -1,18 +1,29 @@
 /**
  * Session panel — the session model in the sidebar, the sole status
  * home (the toolbar holds only the command buttons): the backend
- * lifecycle with its start/stop toggle, the file being edited, and the
- * verdict line — a spinner while busy, otherwise present only when
- * agda has a verdict worth showing (a bug icon in red for errors, a
- * trophy in green for a clean check); then, after a blank line, the
- * per-command progress lines (runningInfo, cleared at each command
- * start) with the full error after them — the conclusion of the
- * stream, as in agda's output buffer. Dirty-checked wholesale rebuild.
+ *  lifecycle with its start/stop toggle, the file being edited, and the
+ *  verdict line — a spinner while busy, otherwise present only when
+ *  agda has a verdict worth showing (a bug icon in red for errors, a
+ *  triangle in amber for warnings, a trophy in green for a clean check);
+ *  then, after a blank line, the per-command progress lines
+ *  (runningInfo, cleared at each command start) with the full error —
+ *  a failed command's exception — and the module's diagnostics (its
+ *  non-fatal check errors, then warnings) after them, as in agda's
+ *  output buffer. Dirty-checked wholesale rebuild.
  */
 
 import type { EditorState } from '@codemirror/state';
 import { filePathFacet, getSession } from '../model/session-model';
-import { bugIcon, fileIcon, pauseIcon, playIcon, saveIcon, serverIcon, trophyIcon } from './icons';
+import {
+  bugIcon,
+  fileIcon,
+  pauseIcon,
+  playIcon,
+  saveIcon,
+  serverIcon,
+  trophyIcon,
+  warningIcon,
+} from './icons';
 import { type StatusCluster, statusCluster } from './status';
 
 export interface SessionPanelHooks {
@@ -52,8 +63,18 @@ export class SessionPanel {
       spinner.className = 'spinner';
       rows.push(this.line(spinner, 'Busy', 'verdict-busy'));
     } else if (cluster.verdict) {
-      const icon = cluster.verdict.kind === 'error' ? bugIcon() : trophyIcon();
-      const word = cluster.verdict.kind === 'error' ? 'Error' : 'Checked';
+      const icon =
+        cluster.verdict.kind === 'error'
+          ? bugIcon()
+          : cluster.verdict.kind === 'warning'
+            ? warningIcon()
+            : trophyIcon();
+      const word =
+        cluster.verdict.kind === 'error'
+          ? 'Error'
+          : cluster.verdict.kind === 'warning'
+            ? 'Warning'
+            : 'Checked';
       rows.push(this.line(icon, word, `verdict-${cluster.verdict.kind}`));
     } else {
       const empty = document.createElement('div');
@@ -74,6 +95,21 @@ export class SessionPanel {
       error.className = 'session-error';
       error.textContent = session.error;
       rows.push(error);
+    }
+    // The module's diagnostics — distinct from the error above (the failed
+    // command's exception): these survive every successful command while
+    // the module still carries them, and clear with the first clean load.
+    if (session.diagnostics.errors.length > 0) {
+      const errors = document.createElement('div');
+      errors.className = 'session-error';
+      errors.textContent = session.diagnostics.errors.join('\n');
+      rows.push(errors);
+    }
+    if (session.diagnostics.warnings.length > 0) {
+      const warnings = document.createElement('div');
+      warnings.className = 'session-warning';
+      warnings.textContent = session.diagnostics.warnings.join('\n');
+      rows.push(warnings);
     }
     this.root.replaceChildren(...rows);
   }

@@ -254,6 +254,7 @@ body {
 
 /* Verdict colors: the whole row tints — icon and word together. */
 .verdict-error { color: var(--status-error); }
+.verdict-warning { color: var(--status-busy); }
 .verdict-checked { color: var(--status-ok); }
 .verdict-busy { color: var(--status-busy); }
 
@@ -497,6 +498,12 @@ body.dock-hidden #dock-resize {
 
 .session-error {
   color: var(--status-error);
+  white-space: nowrap;
+  padding: 2px 0;
+}
+
+.session-warning {
+  color: var(--status-busy);
   white-space: nowrap;
   padding: 2px 0;
 }

@@ -1,12 +1,12 @@
 /**
- * Session model — busy/error/runningInfo/backend StateField driven by
- * effects, plus the transactions (commands.ts's streaming executor) that
- * dispatch them.
+ * Session model — busy/error/diagnostics/runningInfo/backend StateField
+ * driven by effects, plus the transactions (commands.ts's streaming
+ * executor) that dispatch them.
  *
  * The field tests cover each effect in isolation; the transaction tests
  * cover the composite dispatches a command actually performs (start = busy +
- * clear error + clear runningInfo together, end keeps the final error and
- * runningInfo).
+ * clear error + clear diagnostics + clear runningInfo together, end keeps
+ * the final error, diagnostics, and runningInfo).
  */
 
 import { EditorState } from '@codemirror/state';
@@ -20,12 +20,14 @@ import {
   clearRunningInfoTransaction,
   commandEndTransaction,
   commandStartTransaction,
+  diagnosticsTransaction,
   errorTransaction,
   getSession,
   runningInfoTransaction,
   sessionModelField,
   setBackendStatus,
   setBusy,
+  setDiagnostics,
   setError,
 } from '../../src/model/session-model';
 
@@ -37,6 +39,7 @@ function seedStaleSession(state: EditorState): EditorState {
   return state.update({
     effects: [
       setError.of('stale error'),
+      setDiagnostics.of({ warnings: ['stale warning'], errors: ['stale check error'] }),
       appendRunningInfo.of('stale log line'),
       appendRunningInfo.of('another stale line'),
     ],
@@ -44,11 +47,12 @@ function seedStaleSession(state: EditorState): EditorState {
 }
 
 describe('sessionModelField', () => {
-  it('starts booting, idle, with no error, unchecked, and empty runningInfo', () => {
+  it('starts booting, idle, with no error, no diagnostics, unchecked, and empty runningInfo', () => {
     const session = getSession(makeState());
     expect(session.backend).toEqual({ state: 'booting' });
     expect(session.busy).toBe(false);
     expect(session.error).toBeUndefined();
+    expect(session.diagnostics).toEqual({ warnings: [], errors: [] });
     expect(session.checked).toBe(false);
     expect(session.runningInfo).toEqual([]);
   });
@@ -65,6 +69,21 @@ describe('sessionModelField', () => {
     expect(getSession(state).error).toBe('parse error');
     state = state.update({ effects: setError.of(undefined) }).state;
     expect(getSession(state).error).toBeUndefined();
+  });
+
+  it('setDiagnostics replaces the diagnostics wholesale — a healed module clears them', () => {
+    let state = makeState().update({
+      effects: setDiagnostics.of({
+        warnings: ['UnusedVariable'],
+        errors: ['Termination checking failed'],
+      }),
+    }).state;
+    expect(getSession(state).diagnostics).toEqual({
+      warnings: ['UnusedVariable'],
+      errors: ['Termination checking failed'],
+    });
+    state = state.update({ effects: setDiagnostics.of({ warnings: [], errors: [] }) }).state;
+    expect(getSession(state).diagnostics).toEqual({ warnings: [], errors: [] });
   });
 
   it('appendRunningInfo appends messages in order', () => {
@@ -102,7 +121,7 @@ describe('checkedTransaction', () => {
 });
 
 describe('commandStartTransaction', () => {
-  it('marks busy and clears stale error and runningInfo', () => {
+  it('marks busy and clears stale error, diagnostics, and runningInfo', () => {
     let state = seedStaleSession(makeState());
 
     state = state.update(commandStartTransaction()).state;
@@ -110,12 +129,13 @@ describe('commandStartTransaction', () => {
     const session = getSession(state);
     expect(session.busy).toBe(true);
     expect(session.error).toBeUndefined();
+    expect(session.diagnostics).toEqual({ warnings: [], errors: [] });
     expect(session.runningInfo).toEqual([]);
   });
 });
 
 describe('commandEndTransaction', () => {
-  it('clears busy but keeps error and runningInfo', () => {
+  it('clears busy but keeps error, diagnostics, and runningInfo', () => {
     let state = seedStaleSession(makeState());
 
     state = state.update(commandEndTransaction()).state;
@@ -123,6 +143,10 @@ describe('commandEndTransaction', () => {
     const session = getSession(state);
     expect(session.busy).toBe(false);
     expect(session.error).toBe('stale error');
+    expect(session.diagnostics).toEqual({
+      warnings: ['stale warning'],
+      errors: ['stale check error'],
+    });
     expect(session.runningInfo).toEqual(['stale log line', 'another stale line']);
   });
 });
@@ -153,6 +177,22 @@ describe('errorTransaction', () => {
     const state = makeState().update(errorTransaction('Main.agda:1.1: parse error')).state;
 
     expect(getSession(state).error).toBe('Main.agda:1.1: parse error');
+  });
+});
+
+describe('diagnosticsTransaction', () => {
+  it('records an AllGoalsWarnings snapshot as the module diagnostics', () => {
+    const state = makeState().update(
+      diagnosticsTransaction({
+        warnings: ['Unsolved metas'],
+        errors: ['Termination checking failed'],
+      }),
+    ).state;
+
+    expect(getSession(state).diagnostics).toEqual({
+      warnings: ['Unsolved metas'],
+      errors: ['Termination checking failed'],
+    });
   });
 });
 

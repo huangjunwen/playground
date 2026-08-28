@@ -48,6 +48,7 @@ import {
   clearRunningInfoTransaction,
   commandEndTransaction,
   commandStartTransaction,
+  diagnosticsTransaction,
   errorTransaction,
   filePathFacet,
   getSession,
@@ -205,7 +206,8 @@ export class ExecuteContext {
    *
    * The response stream runs through two handler tables, both of which see
    * every response: an internal common table (DisplayInfo.Error shows the
-   * failure in the session and logs it) and the caller's own table (see
+   * command's failure in the session and logs it; AllGoalsWarnings replaces
+   * the module diagnostics) and the caller's own table (see
    * ResponseHandlers) covering what this command alone consumes. The 'End'
    * sentinel — the ALS command-finish marker that ends every stream —
    * reaches the caller's table too, so a command that must act after its
@@ -219,14 +221,27 @@ export class ExecuteContext {
    * are tapped at the backend layer, not re-logged here.
    */
   async executeCommand(cmd: IOTCMCommand, handlers?: ResponseHandlers): Promise<void> {
-    // Every command shares the error carrier: DisplayInfo.Error. It lands in
-    // the session and in the observability log here, so commands never log
-    // their own failure events.
+    // Every command shares two carriers. DisplayInfo.Error is the command's
+    // failure — it lands in the session and in the observability log here,
+    // so commands never log their own failure events. AllGoalsWarnings
+    // carries the module's diagnostics — agda replays its accumulated
+    // warnings/non-fatal errors inside every goals snapshot (every command
+    // that displays goals ends by interpreting Cmd_metas, see
+    // `Agda.Interaction.InteractionTop`), so every snapshot replaces the
+    // diagnostics here, whatever command it rode in on.
     const commonHandlers: ResponseHandlers = {
       DisplayInfo: {
         Error: ({ error: err }) => {
           this.dispatch(errorTransaction(err.message));
           this.logCommandEvent(cmd, 'error', 'error', { error: err.message });
+        },
+        AllGoalsWarnings: info => {
+          this.dispatch(
+            diagnosticsTransaction({
+              warnings: info.warnings.map(w => w.message),
+              errors: info.errors.map(e => e.message),
+            }),
+          );
         },
       },
     };
@@ -258,14 +273,21 @@ export class ExecuteContext {
  * Type-check the file and rebuild the goal list, streaming responses to the
  * view: busy/runningInfo/error dispatch in real time; points and types
  * accumulate locally and commit once, when the End sentinel closes the
- * stream. On error the old goal list is kept.
+ * stream. Check failures that agda recovers from (termination, coverage, …)
+ * do not keep the goal list: those goals are real — agda's error recovery
+ * keeps the interaction points — so they commit alongside the module
+ * diagnostics that carry the failure. Only a command exception
+ * (DisplayInfo.Error, e.g. a parse error) keeps the old goal list.
  */
 export async function executeLoad(ctx: ExecuteContext): Promise<void> {
   // Load's own table accumulates the goal payload for the single commit —
   // the interaction points and the whole AllGoalsWarnings snapshot (types
   // come out of it at commit time); the session-shaped responses dispatch
-  // in real time and the failure flag lands in the session via the
-  // skeleton's common error table.
+  // in real time. Failures reach the session through the skeleton: a
+  // command exception via the common error table, a recovered check
+  // failure via the diagnostics the common table extracts from the
+  // snapshot (agda ≥ 2.8 reports load-time check failures in the
+  // snapshot's errors array, never as DisplayInfo.Error).
   let points: InteractionPoint[] | undefined;
   let allGoals: Extract<DisplayInfo, { kind: 'AllGoalsWarnings' }> | undefined;
   const cmd = ctx.builder.load();
@@ -285,6 +307,16 @@ export async function executeLoad(ctx: ExecuteContext): Promise<void> {
     DisplayInfo: {
       AllGoalsWarnings: info => {
         allGoals = info;
+        // Load is the check command, so its snapshot's errors are its own
+        // failure: narrate them to the observability log (the common table
+        // already put them in the session's diagnostics). A failed check
+        // must not narrate the success lines over them — an empty-but-
+        // erroneous snapshot stays silent; the panel shows the errors.
+        if (info.errors.length > 0) {
+          const message = info.errors.map(e => e.message).join('\n');
+          ctx.logCommandEvent(cmd, 'error', 'error', { error: message });
+          return;
+        }
         for (const line of formatAllGoals(info)) ctx.dispatch(runningInfoTransaction(line));
       },
     },
@@ -292,8 +324,9 @@ export async function executeLoad(ctx: ExecuteContext): Promise<void> {
     // the final commit. Load rebuilds the goal list from scratch (empty
     // `existing`) — ids may have been renumbered and entries the user
     // deleted must not survive — and expands fresh top-level `?` goals into
-    // holes in the same transaction. An error skips the commit; the old
-    // goal list survives.
+    // holes in the same transaction. Only a command exception (session
+    // error) skips the commit: a recovered check failure still commits —
+    // its goals are real, and the diagnostics carry the failure.
     End: () => {
       if (getSession(ctx.state).error !== undefined) return;
       const typesById = allGoals && collectVisibleGoalTypes(allGoals.visibleGoals);
