@@ -28,6 +28,7 @@ import { goalDecorations, goalStyleTheme } from './ui/goal-decorations';
 import { goalBoundaryGuard } from './ui/goal-guard';
 import { goalBackspaceCommand, goalVimDeleteCommand } from './ui/goal-keymap';
 import { GoalsPanel } from './ui/goals-panel';
+import { OutputPanel } from './ui/output-panel';
 import { clamp, wireDrag } from './ui/resize';
 import { SessionPanel } from './ui/session-panel';
 import { applyTheme, watchSystemTheme } from './ui/theme';
@@ -94,6 +95,30 @@ function toggleDock(): void {
   chrome.setShown('dock', dockShown);
 }
 
+// --- dock tabs: events (the wire log) / output (the command channel) ---
+
+function showDockTab(tab: 'events' | 'output'): void {
+  const dock = document.getElementById('dock')!;
+  dock.dataset.tab = tab;
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.dock-tab')) {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
+  }
+}
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>('.dock-tab')) {
+  btn.addEventListener('click', () =>
+    showDockTab(btn.dataset.tab === 'output' ? 'output' : 'events'),
+  );
+}
+
+/** Reveal the output tab — the sidebar's verdict row jumps here. */
+function showOutput(): void {
+  if (!dockShown) toggleDock();
+  showDockTab('output');
+}
+
 // --- save: one path — the file.save command, itself just the context's
 // vfs-write seam (fs::sync). Every entry point (Mod-S, the palette row,
 // the file-row icon) runs it; the UI disables it until the backend runs,
@@ -148,8 +173,10 @@ const sessionPanel = new SessionPanel(document.getElementById('session-body')!, 
   onBackendStart: bootBackend,
   onBackendStop: stopBackend,
   onSaveFile: runSave,
+  onShowOutput: showOutput,
 });
 const eventsPanel = new EventsPanel(document.getElementById('dock')!);
+const outputPanel = new OutputPanel(document.querySelector<HTMLElement>('.dock-output')!);
 
 // Panel gaps are the resize handles: side width, session/goals split,
 // dock height.
@@ -222,6 +249,7 @@ view = new EditorView({
         goalsPanel.update(update.state);
         sessionPanel.update(update.state);
         eventsPanel.update(update.state);
+        outputPanel.update(update.state);
         palette.sync();
       }),
     ],
@@ -231,6 +259,7 @@ view = new EditorView({
 
 // updateListener runs on dispatches only — paint the booting state now.
 sessionPanel.update(view.state);
+outputPanel.update(view.state);
 
 // The index.html bootstrap set the attribute before first paint; from
 // here on the app owns it (and the system watcher keeps 'system' live).

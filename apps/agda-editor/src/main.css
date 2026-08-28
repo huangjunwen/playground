@@ -328,6 +328,44 @@ body {
   caret-color: var(--accent);
 }
 
+/* CM panels' inputs, selects, and buttons ship the base theme's light
+   scheme (white textfields, gradient buttons) — re-derive them from
+   the app theme so the search panel, too, matches either mode. */
+#editor .cm-panel input,
+#editor .cm-panel select {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+#editor .cm-panel select option {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#editor .cm-panel button {
+  background: var(--panel-bg);
+  background-image: none;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#editor .cm-panel button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+#editor .cm-panel label {
+  color: var(--muted);
+}
+
+#editor .cm-panel input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
 /* --- editor column + sidebar --- */
 
 #main-row {
@@ -343,7 +381,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 #editor {
@@ -358,7 +396,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 /* --- surfaces: every panel is its own rounded card on the page bg --- */
@@ -403,18 +441,18 @@ body.dragging {
 }
 
 .gap-row {
-  height: 8px;
-  margin: 2px 0;
+  height: 6px;
+  margin: 1px 0;
   cursor: row-resize;
 }
 
 .gap-row::after {
-  inset: 3px 25%;
+  inset: 2px 25%;
 }
 
 .gap-col {
-  width: 8px;
-  margin: 0 2px;
+  width: 6px;
+  margin: 0 1px;
   cursor: col-resize;
 }
 
@@ -496,21 +534,21 @@ body.dock-hidden #dock-resize {
   flex-shrink: 0;
 }
 
-.session-error {
-  color: var(--status-error);
-  white-space: nowrap;
-  padding: 2px 0;
+/* The verdict row is a button — a hover tint says it jumps somewhere. */
+.verdict-row {
+  width: 100%;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 
-.session-warning {
-  color: var(--status-busy);
-  white-space: nowrap;
-  padding: 2px 0;
-}
-
-.session-log-line {
-  color: var(--muted);
-  white-space: nowrap;
+.verdict-row:hover {
+  background: var(--active-line);
 }
 
 /* --- events dock --- */
@@ -530,13 +568,49 @@ body.dock-hidden #dock-resize {
   user-select: none;
 }
 
-.dock-title {
+.dock-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.dock-tab {
+  border: none;
+  background: none;
+  padding: 6px 8px 4px;
+  cursor: pointer;
   font-size: 0.75em;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-  padding: 6px 2px 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.dock-tab:hover {
+  color: var(--fg);
+}
+
+.dock-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.dock-tab:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+/* Only the active tab's pane shows; the level filter belongs to events. */
+#dock[data-tab='events'] .dock-output {
+  display: none;
+}
+
+#dock[data-tab='output'] .dock-events {
+  display: none;
+}
+
+#dock[data-tab='output'] .dock-level {
+  visibility: hidden;
 }
 
 .dock-level {
@@ -549,6 +623,16 @@ body.dock-hidden #dock-resize {
 
 .dock-level select {
   font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+.dock-level select option {
+  background: var(--bg);
+  color: var(--fg);
 }
 
 .dock-body {
@@ -564,6 +648,75 @@ body.dock-hidden #dock-resize {
   font-size: 0.78rem;
   line-height: 1.5;
   padding: 4px 8px;
+}
+
+/* --- output pane (the dock's other tab) --- */
+
+.dock-output {
+  flex: 1;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  padding: 4px 8px;
+}
+
+.out-log-line {
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+/* The failed command's exception — a banner, distinct from the
+   diagnostics list below it. */
+.out-error {
+  color: var(--status-error);
+  white-space: pre-wrap;
+  border-left: 2px solid var(--status-error);
+  padding: 2px 0 2px 8px;
+  margin: 2px 0;
+}
+
+.out-section {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.out-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.out-msg-icon {
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+  width: 1.2em;
+  padding-top: 2px;
+}
+
+.out-msg-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.out-msg-body {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.out-msg-error {
+  color: var(--status-error);
+}
+
+.out-msg-warn {
+  color: var(--status-busy);
 }
 
 .dock-event {

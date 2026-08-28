@@ -14,7 +14,7 @@ import {
   setDiagnostics,
   setError,
 } from '../../src/model/session-model';
-import { statusCluster } from '../../src/ui/status';
+import { statusCluster, verdictDetail } from '../../src/ui/status';
 
 function makeState(effects: StateEffect<unknown>[] = []): EditorState {
   let state = EditorState.create({ extensions: [sessionModelField] });
@@ -55,11 +55,12 @@ describe('verdict slot (idle only, shown only when worth it)', () => {
     expect(statusCluster(makeState()).verdict).toBeUndefined();
   });
 
-  it('is error when the session holds an error', () => {
+  it('is error when the session holds an error (the exception counts as one)', () => {
     expect(
       statusCluster(makeState([setError.of('Main.agda:1.1: parse error\ncontext')])).verdict,
     ).toEqual({
       kind: 'error',
+      counts: { errors: 1, warnings: 0 },
     });
   });
 
@@ -68,20 +69,34 @@ describe('verdict slot (idle only, shown only when worth it)', () => {
       statusCluster(
         makeState([setDiagnostics.of({ warnings: [], errors: ['Termination checking failed'] })]),
       ).verdict,
-    ).toEqual({ kind: 'error' });
+    ).toEqual({ kind: 'error', counts: { errors: 1, warnings: 0 } });
+  });
+
+  it('error beats warning, and the counts add up across carriers', () => {
+    expect(
+      statusCluster(
+        makeState([
+          setError.of('boom'),
+          setDiagnostics.of({ warnings: ['UnusedVariable', 'ImportWarning'], errors: ['boom2'] }),
+        ]),
+      ).verdict,
+    ).toEqual({ kind: 'error', counts: { errors: 2, warnings: 2 } });
   });
 
   it('is warning when the module carries only benign warnings', () => {
     expect(
       statusCluster(makeState([setDiagnostics.of({ warnings: ['UnusedVariable'], errors: [] })]))
         .verdict,
-    ).toEqual({ kind: 'warning' });
+    ).toEqual({ kind: 'warning', counts: { errors: 0, warnings: 1 } });
   });
 
   it('is checked after a clean load — unsolved goals do not clear it', () => {
     // Status.checked is agda's no-error verdict; unsolved goals stay
     // visible in the goals panel (checked + empty panel = All Done).
-    expect(statusCluster(makeState([setChecked.of(true)])).verdict).toEqual({ kind: 'checked' });
+    expect(statusCluster(makeState([setChecked.of(true)])).verdict).toEqual({
+      kind: 'checked',
+      counts: { errors: 0, warnings: 0 },
+    });
   });
 
   it('is absent while busy — a running command has no verdict yet', () => {
@@ -91,5 +106,19 @@ describe('verdict slot (idle only, shown only when worth it)', () => {
     expect(
       statusCluster(makeState([setBusy.of(true), setChecked.of(true)])).verdict,
     ).toBeUndefined();
+  });
+});
+
+describe('verdictDetail — the counts as a detail suffix', () => {
+  it('pluralises and orders: errors before warnings', () => {
+    expect(verdictDetail({ errors: 2, warnings: 0 })).toBe('2 errors');
+    expect(verdictDetail({ errors: 1, warnings: 0 })).toBe('1 error');
+    expect(verdictDetail({ errors: 0, warnings: 1 })).toBe('1 warning');
+    expect(verdictDetail({ errors: 0, warnings: 3 })).toBe('3 warnings');
+    expect(verdictDetail({ errors: 2, warnings: 1 })).toBe('2 errors, 1 warning');
+  });
+
+  it('is empty when there is nothing to count (the plain word shows alone)', () => {
+    expect(verdictDetail({ errors: 0, warnings: 0 })).toBe('');
   });
 });

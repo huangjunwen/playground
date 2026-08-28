@@ -39,9 +39,12 @@
         <div id="editor-col">
           <div id="editor" class="surface"></div>
           <div id="dock-resize" class="gap gap-row" title="Drag to resize"></div>
-          <div id="dock" class="surface dock">
+          <div id="dock" class="surface dock" data-tab="events">
             <div class="dock-head">
-              <span class="dock-title">Events</span>
+              <div class="dock-tabs" role="tablist">
+                <button type="button" class="dock-tab active" data-tab="events" role="tab" aria-selected="true">Events</button>
+                <button type="button" class="dock-tab" data-tab="output" role="tab" aria-selected="false">Output</button>
+              </div>
               <label class="dock-level">level
                 <select>
                   <option value="debug">debug</option>
@@ -53,6 +56,7 @@
             </div>
             <div class="dock-body">
               <div class="dock-events"></div>
+              <div class="dock-output"></div>
             </div>
           </div>
         </div>
