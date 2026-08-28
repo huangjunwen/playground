@@ -59,6 +59,7 @@ function setTheme(theme: ThemePref): void {
 function toggleVim(): void {
   prefs = { ...prefs, vim: !prefs.vim };
   savePrefs(prefs);
+  chrome.setVim(prefs.vim);
   view.dispatch({
     effects: vimCompartment.reconfigure(prefs.vim ? [vim(), clampVimCursor] : []),
   });
@@ -95,9 +96,9 @@ function toggleDock(): void {
   chrome.setShown('dock', dockShown);
 }
 
-// --- dock tabs: events (the wire log) / output (the command channel) ---
+// --- dock tabs: output (the command channel) / logs (the wire log) ---
 
-function showDockTab(tab: 'events' | 'output'): void {
+function showDockTab(tab: 'output' | 'logs'): void {
   const dock = document.getElementById('dock')!;
   dock.dataset.tab = tab;
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.dock-tab')) {
@@ -108,9 +109,7 @@ function showDockTab(tab: 'events' | 'output'): void {
 }
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>('.dock-tab')) {
-  btn.addEventListener('click', () =>
-    showDockTab(btn.dataset.tab === 'output' ? 'output' : 'events'),
-  );
+  btn.addEventListener('click', () => showDockTab(btn.dataset.tab === 'logs' ? 'logs' : 'output'));
 }
 
 /** Reveal the output tab — the sidebar's verdict row jumps here. */
@@ -136,11 +135,13 @@ Vim.defineEx('write', 'w', () => runSave());
 
 const chrome = new Chrome(document.getElementById('toolbar')!, {
   onCycleTheme: cycleTheme,
+  onToggleVim: toggleVim,
   onOpenPalette: () => palette.open(),
   onToggleSide: toggleSide,
   onToggleDock: toggleDock,
 });
 chrome.setTheme(prefs.theme);
+chrome.setVim(prefs.vim);
 
 const commands = buildCommands({
   getCtx: () => ctx,

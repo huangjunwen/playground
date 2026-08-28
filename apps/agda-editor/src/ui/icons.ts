@@ -136,12 +136,17 @@ export function panelRightIcon(): SVGSVGElement {
   );
 }
 
-/** panel-bottom — toggle the events dock */
+/** panel-bottom — toggle the logs dock */
 export function panelBottomIcon(): SVGSVGElement {
   return icon(
     ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M3 15h18'],
-    'Toggle the events panel',
+    'Toggle the logs panel',
   );
+}
+
+/** serifed V — the vim mode toggle */
+export function vimIcon(): SVGSVGElement {
+  return icon(['M4.5 5h4', 'M15.5 5h4', 'm6 5 6 14 6-14'], 'Vim mode');
 }
 
 /** command — the command palette */

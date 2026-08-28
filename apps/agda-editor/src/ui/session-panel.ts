@@ -73,6 +73,11 @@ export class SessionPanel {
       rows.push(empty);
     }
     this.root.replaceChildren(...rows);
+    // A too-long file path scrolls silently inside its row; once the
+    // row is in the DOM, snap it to the end — the filename is the part
+    // worth seeing.
+    const name = this.root.querySelector<HTMLElement>('.file-name');
+    if (name !== null) name.scrollLeft = name.scrollWidth;
   }
 
   /** The verdict as a summary button — icon, word, counts — jumping to the output panel. */
@@ -96,9 +101,17 @@ export class SessionPanel {
     return this.appendIcon(row, icon, value);
   }
 
-  /** The edited file's path with the manual-save action at its right. */
+  /**
+   * The edited file's path with the manual-save action at its right.
+   * The path text is a silent horizontal scroller (see .file-name):
+   * it shrinks before the save icon ever leaves the row, and shows
+   * its end by default.
+   */
   private fileRow(file: string, backendOnline: boolean): HTMLElement {
-    const row = this.line(fileIcon(), file, 'file-row');
+    const text = document.createElement('span');
+    text.className = 'file-name';
+    text.textContent = file;
+    const row = this.line(fileIcon(), text, 'file-row');
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'session-action';

@@ -29,21 +29,22 @@
       <div id="toolbar" class="toolbar">
         <span class="toolbar-title">agda-editor</span>
         <div class="toolbar-actions">
-          <button type="button" id="btn-theme" class="toolbar-icon" title="Color theme"></button>
           <button type="button" id="btn-palette" class="toolbar-icon" title="Command palette (Ctrl+Shift+P)"></button>
+          <button type="button" id="btn-theme" class="toolbar-icon" title="Color theme"></button>
+          <button type="button" id="btn-vim" class="toolbar-icon" title="Vim mode"></button>
           <button type="button" id="btn-toggle-side" class="toolbar-icon" title="Toggle the sidebar"></button>
-          <button type="button" id="btn-toggle-dock" class="toolbar-icon" title="Toggle the events panel"></button>
+          <button type="button" id="btn-toggle-dock" class="toolbar-icon" title="Toggle the logs panel"></button>
         </div>
       </div>
       <div id="main-row">
         <div id="editor-col">
           <div id="editor" class="surface"></div>
           <div id="dock-resize" class="gap gap-row" title="Drag to resize"></div>
-          <div id="dock" class="surface dock" data-tab="events">
+          <div id="dock" class="surface dock" data-tab="output">
             <div class="dock-head">
               <div class="dock-tabs" role="tablist">
-                <button type="button" class="dock-tab active" data-tab="events" role="tab" aria-selected="true">Events</button>
-                <button type="button" class="dock-tab" data-tab="output" role="tab" aria-selected="false">Output</button>
+                <button type="button" class="dock-tab active" data-tab="output" role="tab" aria-selected="true">Output</button>
+                <button type="button" class="dock-tab" data-tab="logs" role="tab" aria-selected="false">Logs</button>
               </div>
               <label class="dock-level">level
                 <select>
@@ -55,8 +56,8 @@
               </label>
             </div>
             <div class="dock-body">
-              <div class="dock-events"></div>
               <div class="dock-output"></div>
+              <div class="dock-logs"></div>
             </div>
           </div>
         </div>

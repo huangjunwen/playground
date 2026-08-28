@@ -4,7 +4,7 @@
  * cleared at each command start), then the full error — a failed
  * command's exception — and the module's diagnostics under a counted
  * section head, one message per block, as in agda's output buffer.
- * The events tab keeps the wire-level log. The dock is wide, so long
+ * The Logs tab keeps the wire-level log. The dock is wide, so long
  * messages wrap instead of overflowing. Dirty-checked wholesale
  * rebuild.
  */

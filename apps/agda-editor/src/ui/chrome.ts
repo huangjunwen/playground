@@ -1,9 +1,10 @@
 /**
  * Chrome — the toolbar: the app title on the left, the icon actions on
- * the right (theme cycle, palette, sidebar toggle, events toggle).
- * The toggles' pressed state mirrors the panels' visibility, main.ts
- * owns that truth and pushes it in via setShown; the theme button
- * mirrors the persisted preference via setTheme (icon per mode).
+ * the right (palette first, then theme cycle, vim toggle, sidebar
+ * toggle, logs toggle). The toggles' pressed state mirrors the panels'
+ * visibility, main.ts owns that truth and pushes it in via setShown;
+ * the theme button mirrors the persisted preference via setTheme (an
+ * icon per mode), the vim button via setVim (the V lights while on).
  */
 
 import type { ThemePref } from '../model/prefs';
@@ -14,10 +15,12 @@ import {
   panelBottomIcon,
   panelRightIcon,
   sunIcon,
+  vimIcon,
 } from './icons';
 
 export interface ChromeHooks {
   onCycleTheme(): void;
+  onToggleVim(): void;
   onOpenPalette(): void;
   onToggleSide(): void;
   onToggleDock(): void;
@@ -25,12 +28,14 @@ export interface ChromeHooks {
 
 export class Chrome {
   private readonly themeButton: HTMLButtonElement;
+  private readonly vimButton: HTMLButtonElement;
   private readonly sideButton: HTMLButtonElement;
   private readonly dockButton: HTMLButtonElement;
 
   constructor(root: HTMLElement, hooks: ChromeHooks) {
-    this.themeButton = this.iconButton(root, 'btn-theme', sunIcon(), hooks.onCycleTheme);
     this.iconButton(root, 'btn-palette', commandIcon(), hooks.onOpenPalette);
+    this.themeButton = this.iconButton(root, 'btn-theme', sunIcon(), hooks.onCycleTheme);
+    this.vimButton = this.iconButton(root, 'btn-vim', vimIcon(), hooks.onToggleVim);
     this.sideButton = this.toggleButton(
       root,
       'btn-toggle-side',
@@ -58,6 +63,12 @@ export class Chrome {
       pref === 'light' ? sunIcon() : pref === 'dark' ? moonIcon() : monitorIcon(),
     );
     this.themeButton.title = `Color theme: ${pref} (click to change)`;
+  }
+
+  /** Reflect the vim preference in the toggle button — the V lights up while on. */
+  setVim(on: boolean): void {
+    this.vimButton.classList.toggle('on', on);
+    this.vimButton.title = `Vim mode: ${on ? 'on' : 'off'} (click to change)`;
   }
 
   private iconButton(

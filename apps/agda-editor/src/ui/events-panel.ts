@@ -1,5 +1,5 @@
 /**
- * Events panel — the observability-model log in the bottom dock.
+ * Events panel — the observability-model log in the dock's Logs tab.
  *
  * Rendering is incremental: a `seq` watermark, each update appends only
  * newer events; when the ring buffer truncated the head (its first seq
@@ -244,7 +244,7 @@ export class EventsPanel {
   private forceRebuild = false;
 
   constructor(root: HTMLElement) {
-    this.pane = root.querySelector<HTMLElement>('.dock-events')!;
+    this.pane = root.querySelector<HTMLElement>('.dock-logs')!;
     this.levelSelect = root.querySelector<HTMLSelectElement>('.dock-level select')!;
     this.levelSelect.addEventListener('change', () => {
       this.minLevel = this.levelSelect.value as EventLevel;

@@ -210,6 +210,21 @@ body {
 /* The file row tints like an info-level event (Cmd_load::syncEnd). */
 .file-row { color: var(--accent); }
 
+/* The file path scrolls silently inside its row — no scrollbar — so a
+   narrow sidebar clips it instead of pushing the save icon out of
+   sight; the panel code snaps it to the end (the filename) on build. */
+.file-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.file-name::-webkit-scrollbar {
+  display: none;
+}
+
 /* Row-trailing action buttons (backend start/stop, file save). */
 .session-action {
   margin-left: auto;
@@ -482,8 +497,10 @@ body.dock-hidden #dock-resize {
   flex: 1;
 }
 
+/* The session panel is three rows — it sizes to its content and the
+   goals panel below takes all the remaining height. */
 .panel-session {
-  flex: 1.5;
+  flex: none;
 }
 
 .panel-head {
@@ -551,7 +568,7 @@ body.dock-hidden #dock-resize {
   background: var(--active-line);
 }
 
-/* --- events dock --- */
+/* --- dock (output / logs) --- */
 
 .dock {
   display: flex;
@@ -600,12 +617,12 @@ body.dock-hidden #dock-resize {
   border-radius: 4px;
 }
 
-/* Only the active tab's pane shows; the level filter belongs to events. */
-#dock[data-tab='events'] .dock-output {
+/* Only the active tab's pane shows; the level filter belongs to the logs. */
+#dock[data-tab='logs'] .dock-output {
   display: none;
 }
 
-#dock[data-tab='output'] .dock-events {
+#dock[data-tab='output'] .dock-logs {
   display: none;
 }
 
@@ -641,7 +658,7 @@ body.dock-hidden #dock-resize {
   display: flex;
 }
 
-.dock-events {
+.dock-logs {
   flex: 1;
   overflow: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -650,7 +667,7 @@ body.dock-hidden #dock-resize {
   padding: 4px 8px;
 }
 
-/* --- output pane (the dock's other tab) --- */
+/* --- output pane (the dock's first tab) --- */
 
 .dock-output {
   flex: 1;
