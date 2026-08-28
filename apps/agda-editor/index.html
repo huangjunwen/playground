@@ -27,7 +27,20 @@
   <body>
     <main id="app">
       <div id="toolbar" class="toolbar">
-        <span class="toolbar-title">agda-editor</span>
+        <span class="toolbar-title"
+          ><svg class="toolbar-mark" width="26" height="19" viewBox="40 100 432 312" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M128 128 H122 C98 128 82 144 82 168 V226 C82 244 72 253 56 256 C72 259 82 269 82 288 V344 C82 368 98 384 122 384 H128" stroke-width="26" />
+              <path d="M384 128 H390 C414 128 430 144 430 168 V226 C430 244 440 253 456 256 C440 259 430 269 430 288 V344 C430 368 414 384 390 384 H384" stroke-width="26" />
+              <path d="M148 170 L214 196" stroke-width="26" />
+              <path d="M364 170 L298 196" stroke-width="26" />
+              <path d="M173 232 V280" stroke-width="30" />
+              <path d="M339 232 V280" stroke-width="30" />
+            </g>
+            <circle class="dot" cx="173" cy="334" r="22" fill="#e5484d" />
+            <circle class="dot" cx="339" cy="334" r="22" fill="#e5484d" /></svg
+          >agda-editor</span
+        >
         <div class="toolbar-actions">
           <button type="button" id="btn-palette" class="toolbar-icon" title="Command palette (Ctrl+Shift+P)"></button>
           <button type="button" id="btn-theme" class="toolbar-icon" title="Color theme"></button>

@@ -113,11 +113,28 @@ body {
 }
 
 .toolbar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 0.85em;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--muted);
   user-select: none;
+}
+
+.toolbar-mark {
+  flex: none;
+}
+
+/* Dots: fixed red accent; lightened in dark mode so they stay brighter
+   than the muted strokes instead of sinking into the near-black bg. */
+.toolbar-mark .dot {
+  fill: #e5484d;
+}
+
+:root[data-theme='dark'] .toolbar-mark .dot {
+  fill: #ff7b72;
 }
 
 .toolbar-actions {
