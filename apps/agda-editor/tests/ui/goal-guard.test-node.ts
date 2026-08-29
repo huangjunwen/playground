@@ -143,3 +143,31 @@ describe('goalBoundaryGuard composition', () => {
     expect(goalBoundaryGuard.length).toBeGreaterThan(0);
   });
 });
+
+describe('dead (zero-width) records — deleted holes left behind in the list', () => {
+  // Whole-hole deletion keeps the record (from == to) in the list. The
+  // guard must not treat a dead record's phantom boundaries as real:
+  // the user reported typing `{` (auto-closed to `{}`) at the collapsed
+  // position and being unable to type anything afterwards.
+  it('allows typing inside brackets auto-closed at a dead record', () => {
+    const s = makeState(DOC, [HOLE]);
+    const deleted = s.update({ changes: { from: 4, to: 11 } }).state; // hole gone, record [4,4)
+    // closeBrackets transaction shape: insert the pair, cursor between.
+    const bracketed = deleted.update({
+      changes: { from: 4, insert: '{}' },
+      selection: EditorSelection.cursor(5),
+    }).state;
+    expect(bracketed.doc.toString()).toBe('a = {}');
+
+    const res = bracketed.update({ changes: { from: 5, insert: 'a' } });
+    expect(res.state.doc.toString()).toBe('a = {a}');
+  });
+
+  it('emits no atomic ranges for a dead record', () => {
+    const atoms: [number, number][] = [];
+    goalAtomicRangesFor([{ id: 0, from: 4, to: 4 }]).between(0, 20, (from, to) => {
+      atoms.push([from, to]);
+    });
+    expect(atoms).toEqual([]);
+  });
+});

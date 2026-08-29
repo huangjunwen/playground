@@ -52,6 +52,7 @@ function clamp(u: ViewUpdate): void {
     const goals = u.state.field(goalModelField, false) ?? [];
     const prevHead = u.startState.selection.main.head;
     for (const g of goals) {
+      if (g.from === g.to) continue; // dead record (deleted hole): no boundary to snap out of
       const snapped = snapBoundarySplit(main.head, prevHead, g);
       if (snapped !== undefined) {
         u.view.dispatch({ selection: { anchor: snapped } });

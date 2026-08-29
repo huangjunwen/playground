@@ -15,6 +15,10 @@
  * goal-model.ts) always pass: they replace whole goals with the authoritative
  * state ALS just confirmed, and a reject would silently drop both the text
  * change AND the fresh goal list.
+ *
+ * Dead records (from == to — a hole deleted locally, awaiting the next
+ * load's reconciliation) have no boundary chars left; every layer here
+ * skips them, so typing at/around a deleted hole's position is free.
  */
 
 import type { Extension, Transaction, TransactionSpec } from '@codemirror/state';
@@ -29,6 +33,7 @@ import {
 
 /** The deletion range [delFrom, delTo) overlaps a boundary pair of `g`. */
 function touchesBoundary(g: GoalRecord, delFrom: number, delTo: number): boolean {
+  if (g.from === g.to) return false; // dead record (deleted hole): no boundary to protect
   const touchesOpening = delFrom < g.from + HOLE_BOUNDARY && delTo > g.from;
   const touchesClosing = delFrom < g.to && delTo > g.to - HOLE_BOUNDARY;
   return touchesOpening || touchesClosing;
@@ -36,6 +41,7 @@ function touchesBoundary(g: GoalRecord, delFrom: number, delTo: number): boolean
 
 /** A selection [lo, hi) partially overlaps a hole without covering it and without being entirely interior. */
 function straddlesHole(g: GoalRecord, lo: number, hi: number): boolean {
+  if (g.from === g.to) return false; // dead record: a point cannot be straddled
   const overlaps = lo < g.to && hi > g.from;
   const fullyContains = lo <= g.from && hi >= g.to;
   const entirelyInterior = lo >= g.from + HOLE_BOUNDARY && hi <= g.to - HOLE_BOUNDARY;
@@ -109,10 +115,13 @@ const BOUNDARY_ATOM = new BoundaryAtom();
 
 /** Atomic ranges covering every hole's `{!` and `!}` boundary pairs (pure, node-testable). */
 export function goalAtomicRangesFor(goals: GoalRecord[]): RangeSet<RangeValue> {
-  const atoms = goals.flatMap(g => [
-    BOUNDARY_ATOM.range(g.from, g.from + HOLE_BOUNDARY),
-    BOUNDARY_ATOM.range(g.to - HOLE_BOUNDARY, g.to),
-  ]);
+  const atoms = goals.flatMap(g => {
+    if (g.from === g.to) return []; // dead record (deleted hole): no boundary pair
+    return [
+      BOUNDARY_ATOM.range(g.from, g.from + HOLE_BOUNDARY),
+      BOUNDARY_ATOM.range(g.to - HOLE_BOUNDARY, g.to),
+    ];
+  });
   return RangeSet.of(atoms, true);
 }
 
