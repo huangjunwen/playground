@@ -27,13 +27,23 @@ interface VimShim {
  * of `{!` / `!}`), snapped by motion direction: rightward dives into
  * the hole's interior, leftward exits onto the outer `{` / `}` — or out
  * of the hole entirely when the interior has collapsed.
+ *
+ * A collapsed interior (`{!!}`) has exactly one interior position,
+ * from+2 === to-2: resting there is legal (insert lands between the
+ * two `!`s without splitting a pair), so it is a dive target rather
+ * than a bounce position. Shorter records (`{!}`-shaped) have no legal
+ * interior position and keep the bounce.
  */
 function snapBoundarySplit(head: number, prevHead: number, g: GoalRecord): number | undefined {
   const interior = g.to - g.from > 2 * HOLE_BOUNDARY;
+  const collapsed = g.to - g.from === 2 * HOLE_BOUNDARY;
   const forward = head >= prevHead;
-  if (head === g.from + 1) return forward ? (interior ? g.from + HOLE_BOUNDARY : g.to) : g.from;
-  if (head === g.to - HOLE_BOUNDARY)
+  if (head === g.from + 1)
+    return forward ? (interior || collapsed ? g.from + HOLE_BOUNDARY : g.to) : g.from;
+  if (head === g.to - HOLE_BOUNDARY) {
+    if (collapsed) return undefined;
     return forward ? g.to - 1 : interior ? g.to - HOLE_BOUNDARY - 1 : g.from;
+  }
   return undefined;
 }
 

@@ -146,3 +146,84 @@ describe('Backspace dance (no vim)', () => {
     view.destroy();
   });
 });
+
+describe('collapsed-interior hole ({!!}) — vim can reach and edit the middle', () => {
+  // 'a = {!!}\n' — `{` 4, `!` 5, `!` 6, `}` 7. The single interior
+  // position 6 (between the two `!`s) is legal to rest on: insert lands
+  // between them without splitting a boundary pair.
+  const DOC2 = 'a = {!!}\n';
+  const GOAL2: GoalRecord = { id: 0, from: 4, to: 8 };
+
+  function makeCollapsedView(): EditorView {
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: DOC2,
+        extensions: [
+          keymap.of([
+            { key: 'Backspace', run: goalBackspaceCommand },
+            { key: 'x', run: goalVimDeleteCommand },
+            indentWithTab,
+          ]),
+          basicSetup,
+          vim(),
+          clampVimCursor,
+          goalModelField,
+          goalBoundaryGuard,
+        ],
+      }),
+      parent: document.body,
+    });
+    view.dispatch({ effects: setGoals.of([GOAL2]) });
+    view.focus();
+    return view;
+  }
+
+  it('l from the left dives onto the middle position instead of leaving the hole', () => {
+    const view = makeCollapsedView();
+    press(view, '0');
+    const seen: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      press(view, 'l');
+      seen.push(head(view));
+    }
+    // 5 splits `{!` → dives onto the interior position 6; 6 rests (not
+    // bounced off `!}`); 7 rests on `}`; 8 is past EOL → clamped to 7.
+    expect(seen).toEqual([1, 2, 3, 4, 6]);
+    view.destroy();
+  });
+
+  it('h from the right rests on the middle position too', () => {
+    const view = makeCollapsedView();
+    view.dispatch({ selection: { anchor: 7 } }); // on `}`
+    press(view, 'h'); // 6 is also to-2 (`!}` split) — collapsed: rest
+    expect(head(view)).toBe(6);
+    press(view, 'h'); // 5 splits `{!` backward → onto `{`
+    expect(head(view)).toBe(4);
+    view.destroy();
+  });
+
+  it('i in the middle opens insert mode, and typing between the `!`s passes the guard', () => {
+    const view = makeCollapsedView();
+    view.dispatch({ selection: { anchor: 6 } });
+    press(view, 'i');
+    // synthetic keydowns don't produce real DOM input events, so drive
+    // the change the way CM itself does after beforeinput — what matters
+    // here is that the guard lets an insert at 6 through.
+    const shim = (view as unknown as { cm: { state: { vim?: { insertMode?: boolean } } } }).cm;
+    expect(shim.state.vim?.insertMode).toBe(true);
+    view.dispatch({ changes: { from: 6, insert: 'z' }, userEvent: 'input.type' });
+    expect(view.state.doc.toString()).toBe('a = {!z!}\n');
+    view.destroy();
+  });
+
+  it('x in the middle is the two-press dance, not a boundary split', () => {
+    const view = makeCollapsedView();
+    view.dispatch({ selection: { anchor: 6 } });
+    press(view, 'x'); // would delete `!`@6 and split `!}` — dance instead
+    const sel = view.state.selection.main;
+    expect([sel.from, sel.to]).toEqual([4, 8]);
+    press(view, 'x');
+    expect(view.state.doc.toString()).toBe('a = \n');
+    view.destroy();
+  });
+});
