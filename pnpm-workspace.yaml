@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "site"
 
 allowBuilds:
   esbuild: true

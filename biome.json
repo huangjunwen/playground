@@ -12,6 +12,7 @@
       "**/packages/*/tests/**/*.mjs",
       "**/tests/**/*.ts",
       "**/tests/**/*.mjs",
+      "**/site/**/*.mjs",
       "!**/dist",
       "!**/node_modules",
       "!**/vendor"

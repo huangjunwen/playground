@@ -29,6 +29,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @playground/vendor-assets exec node src/scripts/ensure-assets.mjs --family als-wasm
       - run: pnpm --filter @playground/agda-editor build
+      # Markdown site (landing page + per-app docs) → static HTML in _site/
+      - run: pnpm build:site
       # The site root hosts many apps: /<repo>/agda-editor/, /<repo>/<next-app>/…
       - run: mkdir -p _site/agda-editor && cp -r apps/agda-editor/dist/. _site/agda-editor/
       - uses: actions/configure-pages@v5

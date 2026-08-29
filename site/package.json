@@ -1,0 +1,9 @@
+{
+  "name": "@playground/site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev.mjs"
+  }
+}

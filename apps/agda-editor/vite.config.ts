@@ -6,15 +6,19 @@ import { VitePWA } from 'vite-plugin-pwa';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 
-// Deployed under https://<owner>.github.io/playground/agda-editor/ — the
-// absolute base is required for correct service-worker scope and manifest
-// URLs (a relative base would break precache).
-const base = '/playground/agda-editor/';
-
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  // Deployed under https://<owner>.github.io/playground/agda-editor/ — the
+  // absolute base is required for correct service-worker scope and manifest
+  // URLs (a relative base would break precache). In dev, serve at /agda-editor/
+  // so the site dev gateway (site/dev.mjs) can proxy the app without rewrites.
+  const base = command === 'build' ? '/playground/agda-editor/' : '/agda-editor/';
+  return {
   base,
   worker: { format: 'es' },
   server: {
+    // Pinned so the site dev gateway knows where to proxy /agda-editor/.
+    port: 5173,
+    strictPort: true,
     fs: { allow: [repoRoot] },
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
@@ -46,4 +50,5 @@ export default defineConfig({
       },
     }),
   ],
+  };
 });
