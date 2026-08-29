@@ -10,10 +10,13 @@
  *
  * Builders: syncGoals (from-scratch build + existing-list reconciliation).
  * Transactions: the `?` expansion (expandGoalsTransaction) and the give
- * replacement (giveReplacementTransaction).
+ * replacement (giveReplacementTransaction), both undoable via
+ * restoreGoalsOnUndo (history integration below).
  *
  */
 
+import { history, redo, undo, undoDepth } from '@codemirror/commands';
+import type { TransactionSpec } from '@codemirror/state';
 import { EditorState, Transaction } from '@codemirror/state';
 import type { InteractionPoint } from '@playground/language-backend-agda';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,6 +26,7 @@ import {
   getGoals,
   giveReplacementTransaction,
   goalModelField,
+  restoreGoalsOnUndo,
   setGoals,
   syncGoals,
   systemTransaction,
@@ -332,7 +336,7 @@ describe('giveReplacementTransaction', () => {
     expect(getGoals(next)).toHaveLength(0);
   });
 
-  it('is a system transaction outside the undo history (bypasses boundary protection)', () => {
+  it('is a system transaction recorded in the undo history (bypasses boundary protection)', () => {
     const state = makeStateWithGoals(GIVE_DOC, [{ id: 1, from: 4, to: 11 }]);
 
     const spec = giveReplacementTransaction(state, { id: 1, from: 4, to: 11 }, ' x ', {
@@ -341,6 +345,114 @@ describe('giveReplacementTransaction', () => {
     const tr = state.update(spec);
 
     expect(tr.annotation(systemTransaction)).toBe(true);
-    expect(tr.annotation(Transaction.addToHistory)).toBe(false);
+    // No longer forced out of history: undo must be able to restore the hole.
+    expect(tr.annotation(Transaction.addToHistory)).not.toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Undo integration — history + restoreGoalsOnUndo
+// ---------------------------------------------------------------------------
+
+describe('undo integration (history + restoreGoalsOnUndo)', () => {
+  const makeHistoryState = (doc: string): EditorState =>
+    EditorState.create({ doc, extensions: [history(), goalModelField, restoreGoalsOnUndo] });
+
+  /** Run a @codemirror/commands history command against a bare state (no EditorView). */
+  function run(
+    command: (target: { state: EditorState; dispatch: (spec: TransactionSpec) => void }) => boolean,
+    state: EditorState,
+  ): { ok: boolean; state: EditorState } {
+    let next = state;
+    const ok = command({
+      state,
+      dispatch: spec => {
+        next = state.update(spec).state;
+      },
+    });
+    return { ok, state: next };
+  }
+
+  it('undoing a give restores the hole text and the goal record', () => {
+    const s0 = makeHistoryState('a = {!   !}').update({
+      effects: [setGoals.of([{ id: 1, from: 4, to: 11 }])],
+    }).state;
+    const goal = getGoals(s0)[0]!;
+    const given = s0.update(giveReplacementTransaction(s0, goal, 'zero', { paren: false })).state;
+    expect(given.doc.toString()).toBe('a = zero');
+    expect(getGoals(given)).toHaveLength(0);
+
+    const undone = run(undo, given);
+    expect(undone.ok).toBe(true);
+    expect(undone.state.doc.toString()).toBe('a = {!   !}');
+    expect(getGoals(undone.state)).toEqual([{ id: 1, from: 4, to: 11 }]);
+
+    const redone = run(redo, undone.state);
+    expect(redone.ok).toBe(true);
+    expect(redone.state.doc.toString()).toBe('a = zero');
+    expect(getGoals(redone.state)).toHaveLength(0);
+  });
+
+  it('undoing a `?` expansion restores `?` and its record', () => {
+    const s0 = makeHistoryState('a = ?').update({
+      effects: [setGoals.of([{ id: 0, from: 4, to: 5 }])],
+    }).state;
+    const expanded = s0.update(expandGoalsTransaction(s0, [{ id: 0, from: 4, to: 5 }])).state;
+    expect(expanded.doc.toString()).toBe('a = {!   !}');
+
+    const undone = run(undo, expanded);
+    expect(undone.ok).toBe(true);
+    expect(undone.state.doc.toString()).toBe('a = ?');
+    expect(getGoals(undone.state)).toEqual([{ id: 0, from: 4, to: 5 }]);
+  });
+
+  it('typing inside the hole survives a give: undo steps give, then typing', () => {
+    // The original bug: the give (excluded from history) mapped away every
+    // event touching the replaced hole — undo went empty ("nothing left to
+    // undo"). Now the give is its own isolated history step: undo #1 lands
+    // the typed document with the give's inverse payload (verbatim), undo
+    // #2 remaps the record back through the typing.
+    const s0 = makeHistoryState('a = {!   !}').update({
+      effects: [setGoals.of([{ id: 1, from: 4, to: 11 }])],
+    }).state;
+    const typed = s0.update({
+      changes: { from: 6, insert: 'zero' },
+      userEvent: 'input.type',
+    }).state;
+    const goal = getGoals(typed)[0]!;
+    const given = typed.update(
+      giveReplacementTransaction(typed, goal, 'zero', { paren: false }),
+    ).state;
+    expect(given.doc.toString()).toBe('a = zero');
+    expect(undoDepth(given)).toBeGreaterThanOrEqual(2);
+
+    const step1 = run(undo, given);
+    expect(step1.ok).toBe(true);
+    expect(step1.state.doc.toString()).toBe('a = {!zero   !}');
+    expect(getGoals(step1.state)).toEqual([{ id: 1, from: 4, to: 15 }]);
+
+    const step2 = run(undo, step1.state);
+    expect(step2.ok).toBe(true);
+    expect(step2.state.doc.toString()).toBe('a = {!   !}');
+    expect(getGoals(step2.state)).toEqual([{ id: 1, from: 4, to: 11 }]);
+  });
+
+  it('undoing a plain edit still takes the field remap path (no inverse effect attached)', () => {
+    // Plain edits carry no setGoals → restoreGoalsOnUndo contributes nothing
+    // → the field remaps (and resurrects) on its own, as before.
+    const s0 = makeHistoryState('a = {! x !}').update({
+      effects: [setGoals.of([{ id: 1, from: 4, to: 11 }])],
+    }).state;
+    const deleted = s0.update({
+      changes: { from: 4, to: 11 },
+      userEvent: 'delete.selection',
+    }).state;
+    expect(getGoals(deleted)).toEqual([{ id: 1, from: 4, to: 4 }]);
+
+    const undone = run(undo, deleted);
+    expect(undone.ok).toBe(true);
+    expect(undone.state.doc.toString()).toBe('a = {! x !}');
+    // Resurrection-by-text still fires (undo of a whole-hole deletion).
+    expect(getGoals(undone.state)).toEqual([{ id: 1, from: 4, to: 11 }]);
   });
 });

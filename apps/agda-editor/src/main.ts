@@ -9,7 +9,7 @@ import { Backend } from './backend/backend';
 import { ExecuteContext } from './integration/commands';
 import { lspFrameEvent, lspLogEvent } from './integration/lsp-events';
 import { agda } from './language/agda';
-import { goalModelField, HOLE_BOUNDARY } from './model/goal-model';
+import { goalModelField, HOLE_BOUNDARY, restoreGoalsOnUndo } from './model/goal-model';
 import { observabilityModelField } from './model/observability-model';
 import { loadPrefs, type Prefs, savePrefs, type ThemePref } from './model/prefs';
 import {
@@ -236,6 +236,7 @@ view = new EditorView({
       agda(),
       vimCompartment.of(prefs.vim ? [vim(), clampVimCursor] : []),
       goalModelField,
+      restoreGoalsOnUndo,
       sessionModelField,
       observabilityModelField,
       filePathFacet.of(FILE_PATH),

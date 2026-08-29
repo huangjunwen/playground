@@ -7,8 +7,10 @@
  * here (syncGoals and friends).
  */
 
+import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import {
   Annotation,
+  type ChangeDesc,
   ChangeSet,
   type EditorState,
   StateEffect,
@@ -42,6 +44,13 @@ export const HOLE_BOUNDARY = 2;
  * Soft sync: replace the whole goal list. The payload's positions are final —
  * already mapped through this transaction's changes by the builder that
  * emitted it; only later transactions' edits remap them again.
+ *
+ * Deliberately a plain (identity-map) effect: EditorState.update maps later
+ * specs' effects through earlier specs' changes when merging specs, and the
+ * undo-history merge path relies on untouched payloads too — the builders
+ * guarantee final coordinates themselves (and system transactions are
+ * isolated from prior history events, so nothing ever needs remapping
+ * after the fact).
  */
 export const setGoals = StateEffect.define<GoalRecord[]>();
 
@@ -74,11 +83,38 @@ export const goalModelField = StateField.define<GoalRecord[]>({
         const hit = resurrections.find(([from]) => from === g.from);
         if (hit !== undefined) return { ...g, from: hit[0], to: hit[1] };
       }
-      const from = tr.changes.mapPos(g.from, 1);
-      const to = Math.max(tr.changes.mapPos(g.to, -1), from);
-      return { ...g, from, to };
+      return mapRecord(g, tr.changes);
     });
   },
+});
+
+/**
+ * Map one record's positions through `changes` with the field's sticky
+ * sides: from sticks to the right of `{`, to to the left of `}` — the one
+ * mapping idiom behind the field remap and the transaction builders.
+ */
+function mapRecord(g: GoalRecord, changes: ChangeSet | ChangeDesc): GoalRecord {
+  const from = changes.mapPos(g.from, 1);
+  const to = Math.max(changes.mapPos(g.to, -1), from);
+  return { ...g, from, to };
+}
+
+/**
+ * Undo support for goal-list commits: every history-recorded transaction
+ * that carries a setGoals effect and changes the document — the give
+ * replacement, the `?` expansion — attaches an inverse effect restoring
+ * the pre-transaction list verbatim. Undo lands that list in the same
+ * transaction that re-inserts the old text: the transaction's final
+ * document *is* the pre-transaction document, so the old records are
+ * already in final coordinates — no remap. Plain edits carry no setGoals
+ * and keep the field's own remap/resurrection path.
+ */
+export const restoreGoalsOnUndo = invertedEffects.of((tr: Transaction) => {
+  if (tr.changes.empty) return [];
+  if (!tr.effects.some(e => e.is(setGoals))) return [];
+  const before = tr.startState.field(goalModelField, false);
+  if (before === undefined) return [];
+  return [setGoals.of(before)];
 });
 
 /**
@@ -197,6 +233,10 @@ export const HOLE_TEXT = '{!   !}';
  * sides the goal field uses), so the field takes the payload verbatim. That
  * lets a give-family sync ride in one multi-spec dispatch with the
  * replacement spec (one transaction, one UI update).
+ *
+ * The expansion lands in the undo history as its own step (isolated from
+ * prior events; restoreGoalsOnUndo re-inverts the goal list for it), so
+ * undo steps a loaded document back to its `?`s.
  */
 export function expandGoalsTransaction(state: EditorState, goals: GoalRecord[]): TransactionSpec {
   const changes: Array<{ from: number; to: number; insert: string }> = [];
@@ -208,13 +248,9 @@ export function expandGoalsTransaction(state: EditorState, goals: GoalRecord[]):
   }
 
   const expanded = ChangeSet.of(changes, state.doc.length);
-  const final = goals.map(g => {
-    const from = expanded.mapPos(g.from, 1);
-    const to = Math.max(expanded.mapPos(g.to, -1), from);
-    return { ...g, from, to };
-  });
+  const final = goals.map(g => mapRecord(g, expanded));
 
-  const annotations = [systemTransaction.of(true), Transaction.addToHistory.of(false)];
+  const annotations = [systemTransaction.of(true), isolateHistory.of('before')];
   // `sequential`: when dispatched after another spec, this spec's positions
   // are in the coordinates of the document *after* that spec (CM6 composes
   // them into one transaction) — dispatched alone, the flag is inert.
@@ -233,7 +269,9 @@ export function expandGoalsTransaction(state: EditorState, goals: GoalRecord[]):
  * Survivors are mapped to final coordinates through the replacement here, so
  * this spec composes with the follow-up sync (expandGoalsTransaction +
  * syncGoals) in one multi-spec dispatch. Annotated as a system transaction
- * (bypasses boundary protection) and kept out of the undo history.
+ * (bypasses boundary protection). Undoable as its own history step
+ * (isolated from prior events): restoreGoalsOnUndo re-inserts the hole
+ * text and the goal record together.
  *
  * - {paren:false}: keep the payload verbatim (strip the hole boundaries)
  * - {paren:true}:  wrap the payload in parentheses
@@ -248,14 +286,10 @@ export function giveReplacementTransaction(
   const insert = 'str' in result ? result.str : result.paren ? `(${payload})` : payload;
   const goals = getGoals(state).filter(g => g.id !== goal.id);
   const replaced = ChangeSet.of([{ from: goal.from, to: goal.to, insert }], state.doc.length);
-  const final = goals.map(g => {
-    const from = replaced.mapPos(g.from, 1);
-    const to = Math.max(replaced.mapPos(g.to, -1), from);
-    return { ...g, from, to };
-  });
+  const final = goals.map(g => mapRecord(g, replaced));
   return {
     changes: [{ from: goal.from, to: goal.to, insert }],
     effects: [setGoals.of(final)],
-    annotations: [systemTransaction.of(true), Transaction.addToHistory.of(false)],
+    annotations: [systemTransaction.of(true), isolateHistory.of('before')],
   };
 }
