@@ -30,7 +30,7 @@ import {
   prevGoalCommand,
 } from './goal-keymap';
 
-export type CommandCategory = 'Agda' | 'File' | 'View';
+export type CommandCategory = 'Agda' | 'File' | 'View' | 'Help';
 
 /** One palette entry / keymap target. */
 export interface AppCommand {
@@ -64,6 +64,7 @@ export interface CommandEnv {
   setTheme(pref: ThemePref): void;
   isVim(): boolean;
   toggleVim(): void;
+  openAbout(): void;
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
@@ -200,6 +201,15 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       checked: () => env.isVim(),
       run: () => {
         env.toggleVim();
+        return true;
+      },
+    },
+    {
+      id: 'help.about',
+      title: 'About agda-editor',
+      category: 'Help',
+      run: () => {
+        env.openAbout();
         return true;
       },
     },

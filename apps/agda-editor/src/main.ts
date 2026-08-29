@@ -19,6 +19,7 @@ import {
   filePathFacet,
   sessionModelField,
 } from './model/session-model';
+import { About } from './ui/about';
 import { appKeymap, wireGlobalKeys } from './ui/app-keymap';
 import { Chrome } from './ui/chrome';
 import { CommandPalette } from './ui/command-palette';
@@ -31,6 +32,7 @@ import { GoalsPanel } from './ui/goals-panel';
 import { OutputPanel } from './ui/output-panel';
 import { clamp, wireDrag } from './ui/resize';
 import { SessionPanel } from './ui/session-panel';
+import { missingSupport, showSupportCard } from './ui/support';
 import { applyTheme, watchSystemTheme } from './ui/theme';
 import { clampVimCursor } from './ui/vim-cursor';
 
@@ -143,6 +145,8 @@ const chrome = new Chrome(document.getElementById('toolbar')!, {
 chrome.setTheme(prefs.theme);
 chrome.setVim(prefs.vim);
 
+const about = new About();
+
 const commands = buildCommands({
   getCtx: () => ctx,
   toggleSide,
@@ -152,6 +156,7 @@ const commands = buildCommands({
   setTheme,
   isVim: () => prefs.vim,
   toggleVim,
+  openAbout: () => about.open(),
 });
 
 const palette = new CommandPalette(document.getElementById('palette')!, {
@@ -270,27 +275,12 @@ applyTheme(prefs.theme);
 // LSP wire events: every LSP frame both ways, plus each server error-stream
 // line, lands in the observability log — commands only narrate what the
 // wire cannot know (sync/stream elapse, failures, results).
-// ALS runs under WebAssembly JSPI (WebAssembly.promising / Suspending),
-// which is absent on iOS Safari — fail early with a clear reason instead of
-// an opaque boot error.
-const wasmJspi =
-  (globalThis.WebAssembly as unknown as { promising?: unknown; Suspending?: unknown }).promising !==
-    undefined &&
-  (globalThis.WebAssembly as unknown as { promising?: unknown; Suspending?: unknown })
-    .Suspending !== undefined;
 
 // Ask for persistent storage: the precache (~30 MB) must survive browser
 // storage pressure for the app to stay usable offline.
 if (navigator.storage?.persist !== undefined) void navigator.storage.persist();
 
 function bootBackend(): void {
-  if (!wasmJspi) {
-    view.dispatch(backendExitTransaction(1));
-    console.error(
-      'ALS boot failed: this browser does not support WebAssembly JSPI (Chrome 137+, Firefox 153+, Safari 27+).',
-    );
-    return;
-  }
   view.dispatch(backendBootingTransaction());
   Backend.create({
     onLspFrame: (outgoing, msg) => view.dispatch(lspFrameEvent(outgoing, msg)),
@@ -315,6 +305,10 @@ function stopBackend(): void {
   view.dispatch(backendExitTransaction(0));
 }
 
-bootBackend();
+// Support gate: without JSPI the backend cannot boot at all — a card
+// naming the missing capabilities replaces the opaque Session-panel exit.
+const missing = missingSupport();
+if (missing.length > 0) showSupportCard(missing);
+else bootBackend();
 
 window.addEventListener('beforeunload', () => backend?.terminate());

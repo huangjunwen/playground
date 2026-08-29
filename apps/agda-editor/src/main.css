@@ -1038,3 +1038,91 @@ body.dock-hidden #dock-resize {
   color: var(--muted);
   text-align: center;
 }
+
+/* --- browser-support card ------------------------------------------------- */
+
+/* Blocking full-screen card for browsers missing WebAssembly (JSPI): the
+   backend cannot boot there, so there is nothing to continue to. */
+.support-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.support-overlay[hidden] {
+  display: none;
+}
+
+.support-card {
+  width: min(480px, 92vw);
+  padding: 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.support-card h1 {
+  margin: 0 0 12px;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.support-card ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.support-card li {
+  margin: 4px 0;
+  color: var(--status-error);
+}
+
+.support-card p {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --- about dialog --------------------------------------------------------- */
+
+/* Build provenance, opened from `Help: About agda-editor`. Shares the
+   support card's overlay/chrome; adds the commit line and a close
+   button (the support card is dismiss-free, this one is not). */
+.about-commit {
+  margin: 0 0 12px;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.about-commit code {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.95em;
+}
+
+.about-close {
+  display: block;
+  margin: 16px 0 0 auto;
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.about-close:hover {
+  border-color: var(--accent);
+}

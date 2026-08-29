@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -5,6 +6,15 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
+
+// Build provenance: the short commit id, shown behind the About command.
+const commit = (() => {
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { cwd: repoRoot }).toString().trim();
+  } catch {
+    return 'unknown';
+  }
+})();
 
 export default defineConfig(({ command }) => {
   // Deployed under https://<owner>.github.io/playground/agda-editor/ — the
@@ -14,6 +24,7 @@ export default defineConfig(({ command }) => {
   const base = command === 'build' ? '/playground/agda-editor/' : '/agda-editor/';
   return {
   base,
+  define: { __APP_COMMIT__: JSON.stringify(commit) },
   worker: { format: 'es' },
   server: {
     // Pinned so the site dev gateway knows where to proxy /agda-editor/.
