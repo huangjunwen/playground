@@ -9,8 +9,9 @@
  * - deleting an entire hole: from == to (zero width), **record stays in the list**
  *
  * Builders: syncGoals (from-scratch build + existing-list reconciliation).
- * Transactions: the `?` expansion (expandGoalsTransaction) and the give
- * replacement (giveReplacementTransaction), both undoable via
+ * Transactions: the `?` expansion (expandGoalsTransaction), the give
+ * replacement (giveReplacementTransaction) and the case replacement
+ * (caseReplacementTransaction, both MakeCase variants), all undoable via
  * restoreGoalsOnUndo (history integration below).
  *
  */
@@ -21,6 +22,7 @@ import { EditorState, Transaction } from '@codemirror/state';
 import type { InteractionPoint } from '@playground/language-backend-agda';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  caseReplacementTransaction,
   expandGoalsTransaction,
   type GoalRecord,
   getGoals,
@@ -351,6 +353,85 @@ describe('giveReplacementTransaction', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Case replacement transaction — case family
+// ---------------------------------------------------------------------------
+
+describe('caseReplacementTransaction', () => {
+  it('Function replaces the goal’s clause and indents continuation lines to the clause indent', () => {
+    // where-block clause: agda returns the clauses from column 0 (probe-
+    // observed), the transaction restores the clause's own indent.
+    const doc = 'f x = g x\n  where\n    g : Nat → Nat\n    g n = {! n !}';
+    const goal: GoalRecord = { id: 0, from: doc.indexOf('{!'), to: doc.indexOf('!}') + 2 };
+
+    const next = commitCase(doc, goal, 'Function', ['g zero = ?', 'g (suc n) = ?']);
+
+    expect(next.doc.toString()).toBe(
+      'f x = g x\n  where\n    g : Nat → Nat\n    g zero = ?\n    g (suc n) = ?',
+    );
+    expect(getGoals(next)).toEqual([]);
+  });
+
+  it('Function replaces through the end of the goal’s line, keeping trailing text after the goal', () => {
+    // The returned clause covers the whole RHS: `+ zero` after the hole
+    // belongs to the replaced clause, not to the surviving text.
+    const doc = 'a : Nat → Nat → Nat\na n = {! n !} + zero\nb = {! !}';
+    const from = doc.indexOf('{!');
+    const goal: GoalRecord = { id: 0, from, to: from + 7 };
+
+    const next = commitCase(
+      doc,
+      goal,
+      'Function',
+      ['a zero = ? + zero', 'a (suc n) = ? + zero'],
+      [{ id: 1, from: doc.indexOf('{!', from + 1), to: doc.length }],
+    );
+
+    expect(next.doc.toString()).toBe(
+      'a : Nat → Nat → Nat\na zero = ? + zero\na (suc n) = ? + zero\nb = {! !}',
+    );
+    // Survivor maps through the replacement (insert 38 chars replacing
+    // the 20-char clause span → delta +18) and keeps its id.
+    expect(getGoals(next)).toEqual([{ id: 1, from: 45 + 18, to: 50 + 18 }]);
+  });
+
+  it('ExtendedLambda replaces just the hole with the wrapped lambda cases', () => {
+    const doc = 'p : Nat → Nat\np = {! n !}';
+    const from = doc.indexOf('{!');
+    const goal: GoalRecord = { id: 0, from, to: from + 7 };
+
+    const next = commitCase(doc, goal, 'ExtendedLambda', ['zero → zero', 'suc n → suc (p n)']);
+
+    expect(next.doc.toString()).toBe('p : Nat → Nat\np = λ { zero → zero ; suc n → suc (p n) }');
+    expect(getGoals(next)).toEqual([]);
+  });
+
+  it('is a system transaction recorded in the undo history (bypasses boundary protection)', () => {
+    const doc = 'a = {! n !}';
+    const state = makeStateWithGoals(doc, [{ id: 0, from: 4, to: 11 }]);
+
+    const spec = caseReplacementTransaction(state, { id: 0, from: 4, to: 11 }, 'Function', [
+      'a zero = ?',
+    ]);
+    const tr = state.update(spec);
+
+    expect(tr.annotation(systemTransaction)).toBe(true);
+    expect(tr.annotation(Transaction.addToHistory)).not.toBe(false);
+  });
+
+  /** Build the state, commit the case replacement, return the next state. */
+  function commitCase(
+    doc: string,
+    goal: GoalRecord,
+    variant: 'Function' | 'ExtendedLambda',
+    clauses: string[],
+    survivors: GoalRecord[] = [],
+  ): EditorState {
+    const state = makeStateWithGoals(doc, [goal, ...survivors]);
+    return state.update(caseReplacementTransaction(state, goal, variant, clauses)).state;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Undo integration — history + restoreGoalsOnUndo
 // ---------------------------------------------------------------------------
 
@@ -404,6 +485,30 @@ describe('undo integration (history + restoreGoalsOnUndo)', () => {
     expect(undone.ok).toBe(true);
     expect(undone.state.doc.toString()).toBe('a = ?');
     expect(getGoals(undone.state)).toEqual([{ id: 0, from: 4, to: 5 }]);
+  });
+
+  it('undoing a case split restores the clause and the goal record', () => {
+    const CASE_DOC = 'a n = {! n !}';
+    const from = CASE_DOC.indexOf('{!');
+    const s0 = makeHistoryState(CASE_DOC).update({
+      effects: [setGoals.of([{ id: 0, from, to: from + 7 }])],
+    }).state;
+    const goal = getGoals(s0)[0]!;
+    const split = s0.update(
+      caseReplacementTransaction(s0, goal, 'Function', ['a zero = ?', 'a (suc n) = ?']),
+    ).state;
+    expect(split.doc.toString()).toBe('a zero = ?\na (suc n) = ?');
+    expect(getGoals(split)).toHaveLength(0);
+
+    const undone = run(undo, split);
+    expect(undone.ok).toBe(true);
+    expect(undone.state.doc.toString()).toBe(CASE_DOC);
+    expect(getGoals(undone.state)).toEqual([{ id: 0, from, to: from + 7 }]);
+
+    const redone = run(redo, undone.state);
+    expect(redone.ok).toBe(true);
+    expect(redone.state.doc.toString()).toBe('a zero = ?\na (suc n) = ?');
+    expect(getGoals(redone.state)).toHaveLength(0);
   });
 
   it('typing inside the hole survives a give: undo steps give, then typing', () => {

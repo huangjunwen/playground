@@ -293,3 +293,59 @@ export function giveReplacementTransaction(
     annotations: [systemTransaction.of(true), isolateHistory.of('before')],
   };
 }
+
+// ---------------------------------------------------------------------------
+// Case replacement transaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Transaction spec that commits a MakeCase's clauses to the given goal,
+ * dropping the split goal from the list; survivors are mapped to final
+ * coordinates through the replacement here, exactly like the give
+ * replacement (system transaction, own isolated history step).
+ *
+ * The clauses agda returns carry bare `?` markers, not holes, and the
+ * ids behind those markers only exist after the next load re-syncs the
+ * list — so the split goal is dropped here and the caller chains a load.
+ *
+ * - Function: the clauses are full clause lines, always from column 0
+ *   (probe-observed — agda does not preserve the clause's indent). They
+ *   replace the goal's own clause: [first non-whitespace of the goal's
+ *   line, end of that line), continuation lines indented to the clause's
+ *   own indent. v1 limitation: a clause whose LHS/RHS extends past the
+ *   goal's line (multi-line definitions) is not covered — the tail beyond
+ *   the line survives and corrupts the clause until the next load
+ *   re-checks the document.
+ * - ExtendedLambda: the clauses are lambda cases without their wrapper;
+ *   they replace the goal hole itself with `λ { c1 ; c2 … }` (the
+ *   agda2-mode shape).
+ */
+export function caseReplacementTransaction(
+  state: EditorState,
+  goal: GoalRecord,
+  variant: 'Function' | 'ExtendedLambda',
+  clauses: string[],
+): TransactionSpec {
+  let from: number;
+  let to: number;
+  let insert: string;
+  if (variant === 'ExtendedLambda') {
+    from = goal.from;
+    to = goal.to;
+    insert = `λ { ${clauses.join(' ; ')} }`;
+  } else {
+    const line = state.doc.lineAt(goal.from);
+    const indent = line.text.slice(0, line.text.length - line.text.trimStart().length);
+    from = line.from + indent.length;
+    to = line.to;
+    insert = clauses.map((clause, i) => (i === 0 ? clause : indent + clause)).join('\n');
+  }
+  const goals = getGoals(state).filter(g => g.id !== goal.id);
+  const replaced = ChangeSet.of([{ from, to, insert }], state.doc.length);
+  const final = goals.map(g => mapRecord(g, replaced));
+  return {
+    changes: [{ from, to, insert }],
+    effects: [setGoals.of(final)],
+    annotations: [systemTransaction.of(true), isolateHistory.of('before')],
+  };
+}

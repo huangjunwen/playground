@@ -32,6 +32,7 @@ import {
   HIGHLIGHTING_NONE,
 } from '@playground/language-backend-agda';
 import {
+  caseReplacementTransaction,
   expandGoalsTransaction,
   getGoals,
   giveReplacementTransaction,
@@ -408,4 +409,63 @@ export async function executeGive(
       );
     },
   });
+}
+
+/**
+ * Split a goal on the variable in its interior (Cmd_make_case), applying
+ * the result to the view like give: the goal is located by id, the whole
+ * hole span goes out as the range, and the MakeCase response — the only
+ * thing case consumes — accumulates and commits once when the End
+ * sentinel closes the stream.
+ *
+ * agda's clauses carry bare `?` markers, and the InteractionPoints it
+ * echoes are stale (the vfs still holds the pre-split text), so the
+ * commit is just the replacement; a chained load re-syncs the goal list
+ * (renumbered ids, `?`s expanded into holes) and refreshes the
+ * diagnostics — the re-sync give defers to the user, done here because
+ * the replacement is the editor's own edit. executeCase resolves after
+ * the chained load closes, so callers observe the final state.
+ *
+ * Failures need no cleanup, like give: the document was never changed (a
+ * CaseSplitError rides the common DisplayInfo.Error path), and a missing
+ * MakeCase is a silent no-op. Only an unknown goal id throws (local
+ * check, before any I/O).
+ */
+export async function executeCase(
+  ctx: ExecuteContext,
+  goalId: number,
+  payload: string,
+): Promise<void> {
+  const goal = goalById(ctx.state, goalId);
+  if (!goal) {
+    // No goal, so no command could run; the event still narrates the
+    // intended case (an empty range is harmless — nothing is sent).
+    ctx.logCommandEvent(ctx.builder.case(goalId, payload), 'error', 'error', {
+      goalId,
+      error: `goal ${goalId} not found`,
+    });
+    throw new Error(`goal ${goalId} not found`);
+  }
+
+  let makeCase: Extract<AgdaResponse, { kind: 'MakeCase' }> | undefined;
+  let reload: Promise<void> | undefined;
+  const cmd = ctx.builder.case(goalId, payload, {
+    range: span(ctx.state.doc, goal.from, goal.to),
+  });
+
+  await ctx.executeCommand(cmd, {
+    MakeCase: resp => {
+      makeCase ??= resp;
+    },
+    // The End sentinel carries the final commit, like load and give: a
+    // failure (the skeleton put it in the session) or a missing MakeCase
+    // leaves the document untouched — nothing to clean up.
+    End: () => {
+      if (getSession(ctx.state).error !== undefined) return;
+      if (!makeCase) return;
+      ctx.dispatch(caseReplacementTransaction(ctx.state, goal, makeCase.variant, makeCase.clauses));
+      reload = executeLoad(ctx);
+    },
+  });
+  await reload;
 }

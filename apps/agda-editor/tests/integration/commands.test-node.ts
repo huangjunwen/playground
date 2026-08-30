@@ -10,9 +10,14 @@
  * executeGive (streaming like load): goal lookup, IOTCM command shape, and the
  * two-transaction application — giveReplacementTransaction then the
  * expandGoalsTransaction + syncGoals assembly — driven through the shared
- * ExecuteContext.executeCommand skeleton. syncToVfs: the one vfs-write
- * path (fs::sync, narrated by the context itself), shared by every
- * explicit save and each command's pre-flight sync.
+ * ExecuteContext.executeCommand skeleton.
+ * executeCase (streaming like give): MakeCase commit via
+ * caseReplacementTransaction, then a chained load that re-syncs the goal
+ * list — agda's echoed InteractionPoints after a split are stale (the vfs
+ * still holds the pre-split text), so the clauses' bare `?`s only become
+ * goals after the re-check.
+ * syncToVfs: the one vfs-write path (fs::sync, narrated by the context
+ * itself), shared by every explicit save and each command's pre-flight sync.
  */
 
 import { EditorState, Text, type TransactionSpec } from '@codemirror/state';
@@ -25,6 +30,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type EditorViewLike,
   ExecuteContext,
+  executeCase,
   executeGive,
   executeLoad,
   responseDispatcher,
@@ -591,6 +597,126 @@ describe('executeGive', () => {
 
     expect(view.state.doc.toString()).toBe('a = x\nb = {! y !}');
     expect(getGoals(view.state)).toEqual([]);
+  });
+});
+
+describe('executeCase', () => {
+  it('splits the clause, commits the replacement, then chains a load that re-syncs the goals', async () => {
+    // The fake stream re-yields the same responses for both commands: the
+    // case command consumes only the MakeCase, the chained load the goal
+    // payload behind it (everything undeclared is dropped).
+    const doc = 'a = {! n !}\nb = {! !}';
+    const { view, ctx, syncToVfs, stream } = makeContext(
+      doc,
+      [
+        {
+          kind: 'MakeCase',
+          interactionPoint: point(0, 4, 11),
+          variant: 'Function',
+          clauses: ['a zero = ?', 'a (suc n) = ?'],
+        },
+        // Post-split document: 'a zero = ?\na (suc n) = ?\nb = {! !}'
+        // → fresh ?s at [9,10) and [23,24), survivor hole at [29,34).
+        ...loadResponses([point(0, 9, 10), point(1, 23, 24), point(2, 29, 34)]),
+      ],
+      [
+        { id: 0, from: 4, to: 11 },
+        { id: 1, from: 16, to: 21 },
+      ],
+    );
+
+    await executeCase(ctx, 0, 'n');
+
+    expect(syncToVfs).toHaveBeenCalledTimes(2);
+    expect(syncToVfs).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
+    expect(syncToVfs).toHaveBeenNthCalledWith(2, FILE_PATH, 'a zero = ?\na (suc n) = ?\nb = {! !}');
+    expect(stream).toHaveBeenCalledTimes(2);
+    const caseCmd = stream.mock.calls[0][0] as IOTCMCommand;
+    expect(caseCmd.raw).toContain('Cmd_make_case 0');
+    expect(caseCmd.raw).toContain('"n"');
+    expect((stream.mock.calls[1][0] as IOTCMCommand).raw).toContain('Cmd_load');
+    // The chained load expanded the clauses' bare `?`s into holes and
+    // renumbered the goals (the split goal is gone; three fresh ids).
+    expect(view.state.doc.toString()).toBe('a zero = {!   !}\na (suc n) = {!   !}\nb = {! !}');
+    expect(getGoals(view.state)).toEqual([
+      { id: 0, from: 9, to: 16, typeString: 'Nat' },
+      { id: 1, from: 29, to: 36, typeString: 'Nat' },
+      { id: 2, from: 41, to: 46, typeString: 'Nat' },
+    ]);
+    const session = getSession(view.state);
+    expect(session.busy).toBe(false);
+    expect(session.error).toBeUndefined();
+  });
+
+  it('ExtendedLambda replaces just the hole, then chains the load', async () => {
+    const { view, ctx, stream } = makeContext(
+      'h = {! n !}',
+      [
+        {
+          kind: 'MakeCase',
+          interactionPoint: point(0, 4, 11),
+          variant: 'ExtendedLambda',
+          clauses: ['zero → ?', 'suc n → ?'],
+        },
+        // Post-replacement document: 'h = λ { zero → ? ; suc n → ? }'
+        // → fresh ?s at [15,16) and [27,28).
+        ...loadResponses([point(0, 15, 16), point(1, 27, 28)]),
+      ],
+      [{ id: 0, from: 4, to: 11 }],
+    );
+
+    await executeCase(ctx, 0, 'n');
+
+    expect(stream).toHaveBeenCalledTimes(2);
+    expect(view.state.doc.toString()).toBe('h = λ { zero → {!   !} ; suc n → {!   !} }');
+    expect(getGoals(view.state)).toEqual([
+      { id: 0, from: 15, to: 22, typeString: 'Nat' },
+      { id: 1, from: 33, to: 40, typeString: 'Nat' },
+    ]);
+  });
+
+  it('does not touch the backend when the goal id is unknown', async () => {
+    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+
+    await expect(executeCase(ctx, 999, 'n')).rejects.toThrow('999');
+
+    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('leaves the doc untouched and skips the load when agda reports an error', async () => {
+    // Probe-observed wire: splitting a λ-bound variable answers
+    // DisplayInfo.Error (CaseSplitError) — no MakeCase ever comes.
+    const { view, ctx, stream } = makeContext(
+      'a = {! n !}',
+      [
+        errorResponse('[Interaction.CaseSplitError] Cannot split on local variable n'),
+        { kind: 'End' },
+      ],
+      [{ id: 0, from: 4, to: 11 }],
+    );
+
+    await executeCase(ctx, 0, 'n');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(getSession(view.state).error).toContain('Cannot split');
+    expect(view.state.doc.toString()).toBe('a = {! n !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 11 }]);
+  });
+
+  it('leaves the doc untouched when the response set has no MakeCase', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! n !}',
+      [{ kind: 'End' }],
+      [{ id: 0, from: 4, to: 11 }],
+    );
+
+    await executeCase(ctx, 0, 'n');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(view.state.doc.toString()).toBe('a = {! n !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 11 }]);
+    expect(getSession(view.state).error).toBeUndefined();
   });
 });
 

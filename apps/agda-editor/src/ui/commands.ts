@@ -24,6 +24,7 @@ import { appendEventTransaction } from '../model/observability-model';
 import type { ThemePref } from '../model/prefs';
 import {
   type CtxAccessor,
+  caseFromCursorCommand,
   giveFromCursorCommand,
   loadCommand,
   nextGoalCommand,
@@ -108,6 +109,14 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       keybinding: `${agdaChordRoot} ${modKey}+Space`,
       enabled: backendOnline,
       run: view => guarded('give: backend offline', giveFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.case',
+      title: 'Case (split the variable in the goal under the cursor)',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+C`,
+      enabled: backendOnline,
+      run: view => guarded('case: backend offline', caseFromCursorCommand(env.getCtx))(view),
     },
     {
       id: 'agda.next-goal',

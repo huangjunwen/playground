@@ -35,6 +35,7 @@ function mountPalette(): { palette: CommandPalette; onRun: ReturnType<typeof vi.
     setTheme: () => {},
     isVim: () => false,
     toggleVim: () => {},
+    openAbout: () => {},
   };
   const onRun = vi.fn();
   const onClose = vi.fn();

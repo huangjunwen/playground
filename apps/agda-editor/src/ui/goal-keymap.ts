@@ -11,7 +11,12 @@
 import type { EditorState, TransactionSpec } from '@codemirror/state';
 import type { Command } from '@codemirror/view';
 import { EditorView } from '@codemirror/view';
-import { type ExecuteContext, executeGive, executeLoad } from '../integration/commands';
+import {
+  type ExecuteContext,
+  executeCase,
+  executeGive,
+  executeLoad,
+} from '../integration/commands';
 import { type GoalRecord, getGoals, goalAt, HOLE_BOUNDARY } from '../model/goal-model';
 import { appendEventTransaction } from '../model/observability-model';
 
@@ -199,6 +204,28 @@ export function giveFromCursorCommand(getCtx: CtxAccessor): Command {
       return true;
     }
     void executeGive(ctx, goal.id, payload);
+    return true;
+  };
+}
+
+/**
+ * Split the goal under the cursor (falling back to the first visible
+ * one) on its own interior text — the emacs interaction, no prompt.
+ * Empty interior consumes the key and says why via the observability log.
+ */
+export function caseFromCursorCommand(getCtx: CtxAccessor): Command {
+  return view => {
+    const ctx = getCtx();
+    if (ctx === undefined) return false;
+    const goal = goalUnderCursor(view.state);
+    const payload = goal === undefined ? '' : interiorOf(view.state, goal);
+    if (goal === undefined || payload === '') {
+      view.dispatch(
+        appendEventTransaction('warn', 'ui', { note: 'case: no variable under cursor' }),
+      );
+      return true;
+    }
+    void executeCase(ctx, goal.id, payload);
     return true;
   };
 }
