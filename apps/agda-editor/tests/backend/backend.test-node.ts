@@ -44,12 +44,12 @@ function makeFakeSession() {
   };
 }
 
-describe('Backend.syncToVfs (VFS sync)', () => {
+describe('Backend.vfsWrite (VFS sync)', () => {
   it('writes the text to the given path', async () => {
     const { env, writes } = makeFakeEnv();
     const backend = new Backend(env, { session: makeFakeSession() });
 
-    await backend.syncToVfs('/root/workspace/Main.agda', 'module Main where');
+    await backend.vfsWrite('/root/workspace/Main.agda', 'module Main where');
 
     expect(env.fs.writeFile).toHaveBeenCalledTimes(1);
     expect(writes).toHaveLength(1);
@@ -61,8 +61,8 @@ describe('Backend.syncToVfs (VFS sync)', () => {
     const { env, writes } = makeFakeEnv();
     const backend = new Backend(env, { session: makeFakeSession() });
 
-    await backend.syncToVfs('/p', 'same');
-    await backend.syncToVfs('/p', 'same');
+    await backend.vfsWrite('/p', 'same');
+    await backend.vfsWrite('/p', 'same');
 
     expect(env.fs.writeFile).toHaveBeenCalledTimes(2);
     expect(writes).toHaveLength(2);
@@ -101,7 +101,7 @@ describe('Backend.create (real ALS boot via injected run-env)', () => {
       },
     });
 
-    await backend.syncToVfs('/root/workspace/Main.agda', 'module Main where\n');
+    await backend.vfsWrite('/root/workspace/Main.agda', 'module Main where\n');
     const text = new TextDecoder().decode(await env!.fs.readFile('/root/workspace/Main.agda'));
     expect(text).toBe('module Main where\n');
 

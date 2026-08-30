@@ -151,7 +151,7 @@ function showOutput(): void {
 }
 
 // --- save: one path — the file.save command, itself just the context's
-// vfs-write seam (fs::sync). Every entry point (Mod-S, the palette row,
+// vfs-write seam (vfs::wrt). Every entry point (Mod-S, the palette row,
 // the file-row icon) runs it; the UI disables it until the backend runs,
 // and the command still refuses politely on the keyboard path. ---
 

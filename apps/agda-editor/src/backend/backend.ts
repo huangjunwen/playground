@@ -141,7 +141,7 @@ export class Backend {
   }
 
   /** Write `text` to `path` in the worker VFS. */
-  async syncToVfs(path: string, text: string): Promise<void> {
+  async vfsWrite(path: string, text: string): Promise<void> {
     await this.runEnv.fs.writeFile(path, encoder.encode(text));
   }
 

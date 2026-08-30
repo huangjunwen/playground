@@ -39,11 +39,7 @@ import {
   goalById,
   syncGoals,
 } from '../model/goal-model';
-import {
-  appendEventTransaction,
-  type EventLevel,
-  formatElapse,
-} from '../model/observability-model';
+import { appendEventTransaction, formatElapse } from '../model/observability-model';
 import {
   checkedTransaction,
   clearRunningInfoTransaction,
@@ -125,7 +121,7 @@ export interface EditorViewLike {
  */
 export type BackendLike = {
   /** Write the document to the virtual fs. */
-  syncToVfs(path: string, text: string): Promise<void>;
+  vfsWrite(path: string, text: string): Promise<void>;
   /** Stream one command's responses as they arrive (ends at the end marker). */
   stream(cmd: IOTCMCommand): AsyncGenerator<AgdaResponse>;
 };
@@ -169,32 +165,23 @@ export class ExecuteContext {
   }
 
   /**
-   * Append a structured event to the observability log, scoped by the
-   * command's kind: `Cmd_load::done`, `Cmd_give::error`, … — the command
-   * names the scope, `kind` the step within it.
-   */
-  logCommandEvent(command: IOTCMCommand, level: EventLevel, kind: string, payload?: unknown): void {
-    this.dispatch(appendEventTransaction(level, `${command.kind}::${kind}`, payload));
-  }
-
-  /**
    * Write the view's document to the virtual fs — the one vfs-write path,
    * shared by every explicit save and every command's pre-flight sync.
-   * Times the write and narrates it as `fs::sync`: info + elapse on
-   * success, error + message on failure. Never throws; returns whether
-   * the write landed.
+   * Times the write and narrates it as `vfs::wrt` (info + elapse on
+   * success) / `vfs::err` (error + message on failure). Never throws;
+   * returns whether the write landed.
    */
-  async syncToVfs(): Promise<boolean> {
+  async vfsWrite(): Promise<boolean> {
     const startTs = performance.now();
     try {
-      await this.backend.syncToVfs(this.filePath, this.docText);
+      await this.backend.vfsWrite(this.filePath, this.docText);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      this.dispatch(appendEventTransaction('error', 'fs::sync', { error }));
+      this.dispatch(appendEventTransaction('error', 'vfs::err', { error }));
       return false;
     }
     const elapse = formatElapse(performance.now() - startTs);
-    this.dispatch(appendEventTransaction('info', 'fs::sync', { elapse }));
+    this.dispatch(appendEventTransaction('info', 'vfs::wrt', { elapse }));
     return true;
   }
 
@@ -214,9 +201,10 @@ export class ExecuteContext {
    * reaches the caller's table too, so a command that must act after its
    * responses declares an End handler instead of hooking around the call.
    *
-   * The runner narrates the command into the observability log, scoped by
-   * the command's kind: `<Cmd>::cmdEnd` (info, stream elapse); the sync
-   * narrates itself as the shared `fs::sync` event (the same write an
+   * The runner narrates the command into the observability log: `cmd::beg`
+   * (info, stream opens) and `cmd::end` (info, stream elapse), both
+   * carrying the command kind as payload; failures log `cmd::err`. The
+   * sync narrates itself as `vfs::wrt` / `vfs::err` (the same write an
    * explicit save performs), and a failed sync skips the stream (a stale
    * vfs must not run the command). Wire frames themselves
    * are tapped at the backend layer, not re-logged here.
@@ -234,7 +222,9 @@ export class ExecuteContext {
       DisplayInfo: {
         Error: ({ error: err }) => {
           this.dispatch(errorTransaction(err.message));
-          this.logCommandEvent(cmd, 'error', 'error', { error: err.message });
+          this.dispatch(
+            appendEventTransaction('error', 'cmd::err', { cmd: cmd.kind, error: err.message }),
+          );
         },
         AllGoalsWarnings: info => {
           this.dispatch(
@@ -251,7 +241,7 @@ export class ExecuteContext {
 
     this.dispatch(commandStartTransaction());
 
-    const synced = await this.syncToVfs();
+    const synced = await this.vfsWrite();
     if (!synced) {
       // Close the session (busy off); the document was never checked.
       this.dispatch(commandEndTransaction());
@@ -259,12 +249,18 @@ export class ExecuteContext {
     }
 
     const cmdStartTs = performance.now();
+    this.dispatch(appendEventTransaction('info', 'cmd::beg', { cmd: cmd.kind }));
     for await (const resp of this.backend.stream(cmd)) {
       dispatchCommon(resp);
       dispatchUser(resp);
     }
     const cmdEndTs = performance.now();
-    this.logCommandEvent(cmd, 'info', 'cmdEnd', { elapse: formatElapse(cmdEndTs - cmdStartTs) });
+    this.dispatch(
+      appendEventTransaction('info', 'cmd::end', {
+        cmd: cmd.kind,
+        elapse: formatElapse(cmdEndTs - cmdStartTs),
+      }),
+    );
 
     this.dispatch(commandEndTransaction());
   }
@@ -315,7 +311,9 @@ export async function executeLoad(ctx: ExecuteContext): Promise<void> {
         // erroneous snapshot stays silent; the panel shows the errors.
         if (info.errors.length > 0) {
           const message = info.errors.map(e => e.message).join('\n');
-          ctx.logCommandEvent(cmd, 'error', 'error', { error: message });
+          ctx.dispatch(
+            appendEventTransaction('error', 'cmd::err', { cmd: cmd.kind, error: message }),
+          );
           return;
         }
         for (const line of formatAllGoals(info)) ctx.dispatch(runningInfoTransaction(line));
@@ -363,10 +361,14 @@ export async function executeGive(
   if (!goal) {
     // No goal, so no command could run; the event still narrates the
     // intended give (an empty range is harmless — nothing is sent).
-    ctx.logCommandEvent(ctx.builder.give(goalId, payload), 'error', 'error', {
-      goalId,
-      error: `goal ${goalId} not found`,
-    });
+    const intended = ctx.builder.give(goalId, payload);
+    ctx.dispatch(
+      appendEventTransaction('error', 'cmd::err', {
+        cmd: intended.kind,
+        goalId,
+        error: `goal ${goalId} not found`,
+      }),
+    );
     throw new Error(`goal ${goalId} not found`);
   }
 
@@ -440,10 +442,14 @@ export async function executeCase(
   if (!goal) {
     // No goal, so no command could run; the event still narrates the
     // intended case (an empty range is harmless — nothing is sent).
-    ctx.logCommandEvent(ctx.builder.case(goalId, payload), 'error', 'error', {
-      goalId,
-      error: `goal ${goalId} not found`,
-    });
+    const intended = ctx.builder.case(goalId, payload);
+    ctx.dispatch(
+      appendEventTransaction('error', 'cmd::err', {
+        cmd: intended.kind,
+        goalId,
+        error: `goal ${goalId} not found`,
+      }),
+    );
     throw new Error(`goal ${goalId} not found`);
   }
 
@@ -500,10 +506,14 @@ export async function executeRefine(
   if (!goal) {
     // No goal, so no command could run; the event still narrates the
     // intended refine (an empty range is harmless — nothing is sent).
-    ctx.logCommandEvent(ctx.builder.refineOrIntro(goalId, { expr: payload }), 'error', 'error', {
-      goalId,
-      error: `goal ${goalId} not found`,
-    });
+    const intended = ctx.builder.refineOrIntro(goalId, { expr: payload });
+    ctx.dispatch(
+      appendEventTransaction('error', 'cmd::err', {
+        cmd: intended.kind,
+        goalId,
+        error: `goal ${goalId} not found`,
+      }),
+    );
     throw new Error(`goal ${goalId} not found`);
   }
 

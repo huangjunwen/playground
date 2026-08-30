@@ -86,7 +86,7 @@ function guarded(note: string, run: (view: EditorView) => boolean): (view: Edito
   return view => {
     const ok = run(view);
     if (!ok) {
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note); // the dock may be closed — echo it over the editor
     }
     return true;
@@ -154,7 +154,7 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       run: guarded('save: backend not running', () => {
         const ctx = env.getCtx();
         if (ctx === undefined) return false;
-        void ctx.syncToVfs();
+        void ctx.vfsWrite();
         return true;
       }),
     },

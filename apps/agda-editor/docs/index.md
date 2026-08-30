@@ -8,7 +8,7 @@ As a PWA, it can be installed to your desktop and used offline.
 
 1. [Open the app](../../agda-editor/). The first load downloads the ~29 MB wasm backend (cached afterwards, offline-friendly).
 2. The backend starts automatically; the file being edited is inside a virtual file system.
-3. The editor opens with a small starter module — a `Nat` with `_+_`, a theorem that checks by `refl`, and one open goal. Press <kbd>Ctrl+C</kbd> <kbd>Ctrl+L</kbd> to load it: progress and errors appear in the Output panel at the bottom; a green **Checked** verdict shows up in the Session panel.
+3. Press <kbd>Ctrl+C</kbd> <kbd>Ctrl+L</kbd> to load the file: progress and errors appear in the Output panel at the bottom; a green **Checked** verdict shows up in the Session panel. (The editor starts empty — write some Agda, e.g. a `data Nat` and a clause with a `{! !}` goal; `STARTER_DOC` in `src/main.ts` is a ready-made example.)
 4. Leave goals as `{! !}` (top-level `?` placeholders are also expanded into goals after loading). Write an expression inside a goal and press <kbd>Ctrl+C</kbd> <kbd>Ctrl+Space</kbd> to give: if it type-checks, the whole goal is replaced by that expression.
 5. <kbd>Ctrl+C</kbd> <kbd>Ctrl+F</kbd> / <kbd>Ctrl+C</kbd> <kbd>Ctrl+B</kbd> jump between goals; the type of the goal at the cursor is shown inline right after it.
 
@@ -42,7 +42,8 @@ For the full keybinding table and command palette details, see the [keybindings 
 ### Observability & debugging
 
 - **Output panel**: command progress, exceptions, diagnostics (errors and warnings grouped with counts)
-- **Logs panel**: full LSP wire log, stderr, and command timings; filterable by level, with payloads expandable into trees
+- **Logs panel**: full LSP wire log (`lsp::inp` / `lsp::out` / `lsp::err`), vfs writes (`vfs::wrt` / `vfs::err`), command timings (`cmd::beg` / `cmd::end` / `cmd::err`), and user-action warnings (`usr::wrn`); filterable by level, with payloads expandable into trees
+- **Toasts**: when an action does nothing (no goal under the cursor, backend offline), the same warning that lands in the log also flashes briefly over the editor — visible even with the dock closed
 
 ## Caveats & limitations
 

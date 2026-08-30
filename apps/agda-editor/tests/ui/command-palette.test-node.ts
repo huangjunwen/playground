@@ -299,12 +299,12 @@ describe('command availability (backend as a projection)', () => {
   });
 
   it('file.save runs the context vfs seam when online', () => {
-    const syncToVfs = vi.fn(async () => true);
-    const commands = buildCommands({ ...stubEnv, getCtx: () => ({ syncToVfs }) as never });
+    const vfsWrite = vi.fn(async () => true);
+    const commands = buildCommands({ ...stubEnv, getCtx: () => ({ vfsWrite }) as never });
     const view = { dispatch: vi.fn() } as unknown as EditorView;
 
     expect(commands.find(c => c.id === 'file.save')!.run(view)).toBe(true);
-    expect(syncToVfs).toHaveBeenCalledOnce();
+    expect(vfsWrite).toHaveBeenCalledOnce();
     expect(view.dispatch).not.toHaveBeenCalled(); // no warn while online
   });
 

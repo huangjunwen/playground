@@ -16,7 +16,7 @@
  * list — agda's echoed InteractionPoints after a split are stale (the vfs
  * still holds the pre-split text), so the clauses' bare `?`s only become
  * goals after the re-check.
- * syncToVfs: the one vfs-write path (fs::sync, narrated by the context
+ * vfsWrite: the one vfs-write path (vfs::wrt, narrated by the context
  * itself), shared by every explicit save and each command's pre-flight sync.
  */
 
@@ -69,16 +69,16 @@ function makeContext(
 ): {
   view: EditorViewLike & { dispatch: ReturnType<typeof vi.fn> };
   ctx: ExecuteContext;
-  syncToVfs: ReturnType<typeof vi.fn>;
+  vfsWrite: ReturnType<typeof vi.fn>;
   stream: ReturnType<typeof vi.fn>;
 } {
   const view = makeView(doc);
   if (goals) view.dispatch({ effects: [setGoals.of(goals)] });
-  const syncToVfs = vi.fn(async () => {});
+  const vfsWrite = vi.fn(async () => {});
   const stream = vi.fn(async function* () {
     yield* responses;
   });
-  return { view, ctx: new ExecuteContext({ syncToVfs, stream }, view), syncToVfs, stream };
+  return { view, ctx: new ExecuteContext({ vfsWrite, stream }, view), vfsWrite, stream };
 }
 
 function point(id: number, from0: number, to0: number): InteractionPoint {
@@ -196,15 +196,15 @@ describe('posAt / span (1-based coordinate helpers)', () => {
 
 describe('executeLoad (streaming)', () => {
   it('dispatches busy/log in real time and rebuilds goals when the stream ends', async () => {
-    const { view, ctx, syncToVfs, stream } = makeContext('a = ?\nb = ?', [
+    const { view, ctx, vfsWrite, stream } = makeContext('a = ?\nb = ?', [
       { kind: 'RunningInfo', debugLevel: 1, message: 'Checking Main.agda' },
       ...loadResponses([point(0, 4, 5), point(1, 10, 11)]),
     ]);
 
     await executeLoad(ctx);
 
-    expect(syncToVfs).toHaveBeenCalledTimes(1);
-    expect(syncToVfs).toHaveBeenCalledWith(FILE_PATH, 'a = ?\nb = ?');
+    expect(vfsWrite).toHaveBeenCalledTimes(1);
+    expect(vfsWrite).toHaveBeenCalledWith(FILE_PATH, 'a = ?\nb = ?');
     expect(stream).toHaveBeenCalledTimes(1);
     const cmd = stream.mock.calls[0][0] as IOTCMCommand;
     expect(cmd.raw).toContain('Cmd_load');
@@ -224,7 +224,7 @@ describe('executeLoad (streaming)', () => {
   });
 
   it('sets the error in real time and keeps the old goals when the load fails', async () => {
-    const { view, ctx, syncToVfs } = makeContext(
+    const { view, ctx, vfsWrite } = makeContext(
       'a = {! !}',
       [
         {
@@ -238,7 +238,7 @@ describe('executeLoad (streaming)', () => {
 
     await executeLoad(ctx);
 
-    expect(syncToVfs).toHaveBeenCalledTimes(1);
+    expect(vfsWrite).toHaveBeenCalledTimes(1);
     const session = getSession(view.state);
     expect(session.error).toContain('parse error');
     expect(session.busy).toBe(false);
@@ -247,7 +247,7 @@ describe('executeLoad (streaming)', () => {
     expect(view.state.doc.toString()).toBe('a = {! !}');
     // The common error handler logs the failure — the command itself doesn't.
     const events = getEvents(view.state);
-    const errorEvent = events.find(e => e.kind === 'Cmd_load::error');
+    const errorEvent = events.find(e => e.kind === 'cmd::err');
     expect(errorEvent).toMatchObject({
       level: 'error',
       payload: { error: 'Main.agda:1.1: parse error' },
@@ -305,7 +305,7 @@ describe('executeLoad (streaming)', () => {
     expect(getGoals(view.state)).toEqual([]);
     // Load is the check command — its snapshot's errors are its failure.
     const events = getEvents(view.state);
-    const errorEvent = events.find(e => e.kind === 'Cmd_load::error');
+    const errorEvent = events.find(e => e.kind === 'cmd::err');
     expect(errorEvent).toMatchObject({ level: 'error' });
   });
 
@@ -368,21 +368,23 @@ describe('executeLoad (streaming)', () => {
     // (backend/backend.ts) — the command layer narrates only what it knows.
     const events = getEvents(view.state);
     expect(events.map(e => [e.level, e.kind])).toEqual([
-      ['info', 'fs::sync'],
-      ['info', 'Cmd_load::cmdEnd'],
+      ['info', 'vfs::wrt'],
+      ['info', 'cmd::beg'],
+      ['info', 'cmd::end'],
     ]);
     expect(events[0]!.payload).toMatchObject({ elapse: expect.any(String) });
-    expect(events[1]!.payload).toMatchObject({ elapse: expect.any(String) });
+    expect(events[1]!.payload).toMatchObject({ cmd: 'Cmd_load' });
+    expect(events[2]!.payload).toMatchObject({ cmd: 'Cmd_load', elapse: expect.any(String) });
     expect(events.every((e, i, all) => i === 0 || e.seq === all[i - 1]!.seq + 1)).toBe(true);
   });
 
-  it('narrates a failed sync through the shared fs seam and skips the stream', async () => {
+  it('narrates a failed sync through the shared vfs seam and skips the stream', async () => {
     const view = makeView('a = ?');
-    const syncToVfs = vi.fn(async () => {
+    const vfsWrite = vi.fn(async () => {
       throw new Error('fs full');
     });
     const stream = vi.fn(async function* () {});
-    const ctx = new ExecuteContext({ syncToVfs, stream }, view);
+    const ctx = new ExecuteContext({ vfsWrite, stream }, view);
 
     await executeLoad(ctx);
 
@@ -390,7 +392,7 @@ describe('executeLoad (streaming)', () => {
     expect(stream).not.toHaveBeenCalled();
     expect(getSession(view.state).busy).toBe(false);
     const events = getEvents(view.state);
-    expect(events.map(e => [e.level, e.kind])).toEqual([['error', 'fs::sync']]);
+    expect(events.map(e => [e.level, e.kind])).toEqual([['error', 'vfs::err']]);
     expect(events[0]!.payload).toMatchObject({ error: 'fs full' });
   });
 });
@@ -398,7 +400,7 @@ describe('executeLoad (streaming)', () => {
 describe('executeGive', () => {
   it('locates the goal, sends Cmd_give with the whole-hole range, and commits in one dispatch', async () => {
     const doc = 'a = {! !}\nb = {! !}';
-    const { view, ctx, syncToVfs, stream } = makeContext(
+    const { view, ctx, vfsWrite, stream } = makeContext(
       doc,
       [
         { kind: 'GiveAction', interactionPoint: point(0, 5, 10), giveResult: { paren: false } },
@@ -431,8 +433,8 @@ describe('executeGive', () => {
 
     await executeGive(ctx, 0, 'suc ?');
 
-    expect(syncToVfs).toHaveBeenCalledTimes(1);
-    expect(syncToVfs).toHaveBeenCalledWith(FILE_PATH, doc);
+    expect(vfsWrite).toHaveBeenCalledTimes(1);
+    expect(vfsWrite).toHaveBeenCalledWith(FILE_PATH, doc);
     expect(stream).toHaveBeenCalledTimes(1);
     const cmd = stream.mock.calls[0][0] as IOTCMCommand;
     expect(cmd.raw).toContain('Cmd_give WithoutForce 0');
@@ -450,11 +452,11 @@ describe('executeGive', () => {
   });
 
   it('does not touch the backend when the goal id is unknown', async () => {
-    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+    const { ctx, vfsWrite, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
 
     await expect(executeGive(ctx, 999, 'x')).rejects.toThrow('999');
 
-    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(vfsWrite).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
   });
 
@@ -503,7 +505,7 @@ describe('executeGive', () => {
   });
 
   it('leaves the doc untouched when agda reports an error', async () => {
-    const { view, ctx, syncToVfs } = makeContext(
+    const { view, ctx, vfsWrite } = makeContext(
       'a = {! !}',
       [
         {
@@ -516,7 +518,7 @@ describe('executeGive', () => {
 
     await executeGive(ctx, 0, 'x');
 
-    expect(syncToVfs).toHaveBeenCalledTimes(1);
+    expect(vfsWrite).toHaveBeenCalledTimes(1);
     expect(getSession(view.state).error).toContain('no such interaction point');
     expect(view.state.doc.toString()).toBe('a = {! !}');
     expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
@@ -607,7 +609,7 @@ describe('executeCase', () => {
     // case command consumes only the MakeCase, the chained load the goal
     // payload behind it (everything undeclared is dropped).
     const doc = 'a = {! n !}\nb = {! !}';
-    const { view, ctx, syncToVfs, stream } = makeContext(
+    const { view, ctx, vfsWrite, stream } = makeContext(
       doc,
       [
         {
@@ -628,9 +630,9 @@ describe('executeCase', () => {
 
     await executeCase(ctx, 0, 'n');
 
-    expect(syncToVfs).toHaveBeenCalledTimes(2);
-    expect(syncToVfs).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
-    expect(syncToVfs).toHaveBeenNthCalledWith(2, FILE_PATH, 'a zero = ?\na (suc n) = ?\nb = {! !}');
+    expect(vfsWrite).toHaveBeenCalledTimes(2);
+    expect(vfsWrite).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
+    expect(vfsWrite).toHaveBeenNthCalledWith(2, FILE_PATH, 'a zero = ?\na (suc n) = ?\nb = {! !}');
     expect(stream).toHaveBeenCalledTimes(2);
     const caseCmd = stream.mock.calls[0][0] as IOTCMCommand;
     expect(caseCmd.raw).toContain('Cmd_make_case 0');
@@ -677,11 +679,11 @@ describe('executeCase', () => {
   });
 
   it('does not touch the backend when the goal id is unknown', async () => {
-    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+    const { ctx, vfsWrite, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
 
     await expect(executeCase(ctx, 999, 'n')).rejects.toThrow('999');
 
-    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(vfsWrite).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
   });
 
@@ -728,7 +730,7 @@ describe('executeRefine', () => {
     // point is bogus — refine's appended `?`s are not in the vfs yet), the
     // chained load the goal payload behind it.
     const doc = 'a = {! !}\nb = {! !}';
-    const { view, ctx, syncToVfs, stream } = makeContext(
+    const { view, ctx, vfsWrite, stream } = makeContext(
       doc,
       [
         { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { str: 'suc ?' } },
@@ -744,9 +746,9 @@ describe('executeRefine', () => {
 
     await executeRefine(ctx, 0, 'suc');
 
-    expect(syncToVfs).toHaveBeenCalledTimes(2);
-    expect(syncToVfs).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
-    expect(syncToVfs).toHaveBeenNthCalledWith(2, FILE_PATH, 'a = suc ?\nb = {! !}');
+    expect(vfsWrite).toHaveBeenCalledTimes(2);
+    expect(vfsWrite).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
+    expect(vfsWrite).toHaveBeenNthCalledWith(2, FILE_PATH, 'a = suc ?\nb = {! !}');
     expect(stream).toHaveBeenCalledTimes(2);
     const refineCmd = stream.mock.calls[0][0] as IOTCMCommand;
     expect(refineCmd.raw).toContain('Cmd_refine_or_intro False 0');
@@ -803,11 +805,11 @@ describe('executeRefine', () => {
   });
 
   it('does not touch the backend when the goal id is unknown', async () => {
-    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+    const { ctx, vfsWrite, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
 
     await expect(executeRefine(ctx, 999, 'x')).rejects.toThrow('999');
 
-    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(vfsWrite).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
   });
 
@@ -842,33 +844,33 @@ describe('executeRefine', () => {
   });
 });
 
-describe('syncToVfs (the one vfs-write path every save uses)', () => {
-  it('writes the current document and narrates fs::sync info with elapse', async () => {
-    const { view, ctx, syncToVfs } = makeContext('module Main where\n', []);
+describe('vfsWrite (the one vfs-write path every save uses)', () => {
+  it('writes the current document and narrates vfs::wrt info with elapse', async () => {
+    const { view, ctx, vfsWrite } = makeContext('module Main where\n', []);
 
-    await expect(ctx.syncToVfs()).resolves.toBe(true);
+    await expect(ctx.vfsWrite()).resolves.toBe(true);
 
-    expect(syncToVfs).toHaveBeenCalledWith(FILE_PATH, 'module Main where\n');
+    expect(vfsWrite).toHaveBeenCalledWith(FILE_PATH, 'module Main where\n');
     const events = getEvents(view.state);
     expect(events).toHaveLength(1);
     expect(events[0]!.level).toBe('info');
-    expect(events[0]!.kind).toBe('fs::sync');
+    expect(events[0]!.kind).toBe('vfs::wrt');
     expect(events[0]!.payload).toMatchObject({ elapse: expect.any(String) });
   });
 
-  it('narrates a failed write as fs::sync error, never throws, returns false', async () => {
+  it('narrates a failed write as vfs::err error, never throws, returns false', async () => {
     const view = makeView('module Main where\n');
-    const syncToVfs = vi.fn(async () => {
+    const vfsWrite = vi.fn(async () => {
       throw new Error('fs full');
     });
-    const ctx = new ExecuteContext({ syncToVfs, stream: vi.fn(async function* () {}) }, view);
+    const ctx = new ExecuteContext({ vfsWrite, stream: vi.fn(async function* () {}) }, view);
 
-    await expect(ctx.syncToVfs()).resolves.toBe(false);
+    await expect(ctx.vfsWrite()).resolves.toBe(false);
 
     const events = getEvents(view.state);
     expect(events).toHaveLength(1);
     expect(events[0]!.level).toBe('error');
-    expect(events[0]!.kind).toBe('fs::sync');
+    expect(events[0]!.kind).toBe('vfs::err');
     expect(events[0]!.payload).toMatchObject({ error: 'fs full' });
   });
 });

@@ -19,30 +19,30 @@ function makeView() {
 }
 
 describe('lspFrameEvent', () => {
-  it('marks outgoing frames as lsp::o', () => {
+  it('marks outgoing frames as lsp::out', () => {
     const view = makeView();
 
     view.dispatch(lspFrameEvent(true, { jsonrpc: '2.0', id: 1, method: 'initialize' }));
 
     expect(getEvents(view.state())).toEqual([
-      expect.objectContaining({ level: 'debug', kind: 'lsp::o' }),
+      expect.objectContaining({ level: 'debug', kind: 'lsp::out' }),
     ]);
     expect((getEvents(view.state())[0]!.payload as { method?: string }).method).toBe('initialize');
   });
 
-  it('marks incoming frames as lsp::i', () => {
+  it('marks incoming frames as lsp::inp', () => {
     const view = makeView();
 
     view.dispatch(lspFrameEvent(false, { jsonrpc: '2.0', method: 'window/logMessage' }));
 
     expect(getEvents(view.state())).toEqual([
-      expect.objectContaining({ level: 'debug', kind: 'lsp::i' }),
+      expect.objectContaining({ level: 'debug', kind: 'lsp::inp' }),
     ]);
   });
 });
 
 describe('lspLogEvent', () => {
-  it('marks each server error-stream line as lsp::e', () => {
+  it('marks each server error-stream line as lsp::err', () => {
     const view = makeView();
 
     view.dispatch(lspLogEvent('wasmi: panic'));
@@ -50,7 +50,7 @@ describe('lspLogEvent', () => {
     expect(getEvents(view.state())).toEqual([
       expect.objectContaining({
         level: 'debug',
-        kind: 'lsp::e',
+        kind: 'lsp::err',
         payload: { line: 'wasmi: panic' },
       }),
     ]);

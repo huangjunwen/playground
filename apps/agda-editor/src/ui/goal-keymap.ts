@@ -201,14 +201,14 @@ export function giveFromCursorCommand(getCtx: CtxAccessor): Command {
     const goal = goalUnderCursor(view.state);
     if (goal === undefined) {
       const note = 'give: no goal under cursor';
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note);
       return true;
     }
     const payload = interiorOf(view.state, goal);
     if (payload === '') {
       const note = 'give: no expression under cursor';
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note);
       return true;
     }
@@ -229,14 +229,14 @@ export function caseFromCursorCommand(getCtx: CtxAccessor): Command {
     const goal = goalUnderCursor(view.state);
     if (goal === undefined) {
       const note = 'case: no goal under cursor';
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note);
       return true;
     }
     const payload = interiorOf(view.state, goal);
     if (payload === '') {
       const note = 'case: no variable under cursor';
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note);
       return true;
     }
@@ -258,7 +258,7 @@ export function refineFromCursorCommand(getCtx: CtxAccessor): Command {
     const goal = goalUnderCursor(view.state);
     if (goal === undefined) {
       const note = 'refine: no goal under cursor';
-      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      view.dispatch(appendEventTransaction('warn', 'usr::wrn', { note }));
       showToast(note);
       return true;
     }
