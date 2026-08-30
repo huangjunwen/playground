@@ -8,7 +8,7 @@ As a PWA, it can be installed to your desktop and used offline.
 
 1. [Open the app](../../agda-editor/). The first load downloads the ~29 MB wasm backend (cached afterwards, offline-friendly).
 2. The backend starts automatically; the file being edited is inside a virtual file system.
-3. Write some Agda code and press <kbd>Ctrl+C</kbd> <kbd>Ctrl+L</kbd> to load: progress and errors appear in the Output panel at the bottom; a green **Checked** verdict shows up in the Session panel.
+3. The editor opens with a small starter module — a `Nat` with `_+_`, a theorem that checks by `refl`, and one open goal. Press <kbd>Ctrl+C</kbd> <kbd>Ctrl+L</kbd> to load it: progress and errors appear in the Output panel at the bottom; a green **Checked** verdict shows up in the Session panel.
 4. Leave goals as `{! !}` (top-level `?` placeholders are also expanded into goals after loading). Write an expression inside a goal and press <kbd>Ctrl+C</kbd> <kbd>Ctrl+Space</kbd> to give: if it type-checks, the whole goal is replaced by that expression.
 5. <kbd>Ctrl+C</kbd> <kbd>Ctrl+F</kbd> / <kbd>Ctrl+C</kbd> <kbd>Ctrl+B</kbd> jump between goals; the type of the goal at the cursor is shown inline right after it.
 
@@ -29,6 +29,8 @@ For the full keybinding table and command palette details, see the [keybindings 
 | --- | --- |
 | Load | Type-check the whole file with streaming progress; rebuilds the goal list |
 | Give | Submit the expression inside ` {! expr !} ` at the cursor for checking; on success the whole goal is replaced |
+| Refine | Give the expression and open new subgoals for the arguments agda could not infer (`suc` → `suc {!   !}`); an empty goal becomes an intro (`λ x → {!   !}`), then re-checks |
+| Case | Split the goal at the cursor on the variable inside it, writing one clause per constructor, then re-check |
 | Goal navigation | Next / previous goal, wraps around at the ends and scrolls to the middle of the viewport |
 
 ### Backend
@@ -46,7 +48,7 @@ For the full keybinding table and command palette details, see the [keybindings 
 
 - **Browser support**: requires WebAssembly JSPI (Chrome 137+ / Firefox 153+ / Safari 27+); **iOS Safari is not supported** — the backend fails to start and the Session panel shows exited
 - **Single file, no persistence**: currently only the fixed `Main.agda` is edited; documents live in an in-memory virtual FS and **are lost on page refresh** (only theme / Vim preferences persist) — back up your code yourself
-- Agda interaction currently focuses on load / give / goal navigation; go-to-definition, semantic completion, case-split, auto, etc. are not wired up in the UI yet
+- Agda interaction currently focuses on load / give / refine / case / goal navigation; go-to-definition, semantic completion, auto, etc. are not wired up in the UI yet
 - <kbd>Ctrl+Space</kbd> may conflict with IME toggle keys (fcitx / ibus / …); with a selection present, <kbd>Ctrl+C</kbd> is copy rather than the Agda chord prefix
 - Syntax highlighting is purely lexical (semantic highlighting is off); the inline goal type comes from the last load and may be stale after edits — load again to be sure
 

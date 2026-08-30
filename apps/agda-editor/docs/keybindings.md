@@ -8,6 +8,7 @@ Keybindings below are taken from `src/ui/commands.ts`. On macOS, <kbd>Ctrl</kbd>
 | --- | --- | --- |
 | <kbd>Ctrl+C</kbd> <kbd>Ctrl+L</kbd> | Agda: Load | Type-check the whole file |
 | <kbd>Ctrl+C</kbd> <kbd>Ctrl+Space</kbd> | Agda: Give | Fill the goal at the cursor with the expression inside it |
+| <kbd>Ctrl+C</kbd> <kbd>Ctrl+R</kbd> | Agda: Refine | Fill the goal at the cursor with the expression inside it and open new subgoals for what agda could not infer (empty goal → intro) |
 | <kbd>Ctrl+C</kbd> <kbd>Ctrl+C</kbd> | Agda: Case | Split on the variable in the goal at the cursor (writes the split clauses, then re-checks) |
 | <kbd>Ctrl+C</kbd> <kbd>Ctrl+F</kbd> | Agda: Next goal | Jump to the next goal |
 | <kbd>Ctrl+C</kbd> <kbd>Ctrl+B</kbd> | Agda: Previous goal | Jump to the previous goal |

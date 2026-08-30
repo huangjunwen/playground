@@ -469,3 +469,64 @@ export async function executeCase(
   });
   await reload;
 }
+
+/**
+ * Fill a goal and refine it (Cmd_refine_or_intro, the emacs C-c C-r): the
+ * interior is given like give, and agda appends `?`s for the arguments it
+ * could not infer (an empty interior becomes an intro — `λ`-abstraction).
+ * The response is give's GiveAction (a string with the reified term and its
+ * bare `?` markers, or a paren instruction when nothing changed), so the
+ * commit reuses giveReplacementTransaction verbatim.
+ *
+ * The InteractionPoints echoed afterwards are bogus: refine's appended `?`s
+ * are not in the vfs yet, so their ranges collapse onto the old hole's
+ * right margin (emacs never trusts them either — it rescans the buffer).
+ * Hence the commit is just the replacement; a chained load re-syncs the
+ * goal list (real ranges for the new holes, renumbered ids) and refreshes
+ * the diagnostics. executeRefine resolves after the chained load closes,
+ * so callers observe the final state.
+ *
+ * Failures need no cleanup, like give: the document was never changed (an
+ * error rides the common DisplayInfo.Error path), and a missing GiveAction
+ * is a silent no-op. Only an unknown goal id throws (local check, before
+ * any I/O).
+ */
+export async function executeRefine(
+  ctx: ExecuteContext,
+  goalId: number,
+  payload: string,
+): Promise<void> {
+  const goal = goalById(ctx.state, goalId);
+  if (!goal) {
+    // No goal, so no command could run; the event still narrates the
+    // intended refine (an empty range is harmless — nothing is sent).
+    ctx.logCommandEvent(ctx.builder.refineOrIntro(goalId, { expr: payload }), 'error', 'error', {
+      goalId,
+      error: `goal ${goalId} not found`,
+    });
+    throw new Error(`goal ${goalId} not found`);
+  }
+
+  let giveResult: GiveResult | undefined;
+  let reload: Promise<void> | undefined;
+  const cmd = ctx.builder.refineOrIntro(goalId, {
+    expr: payload,
+    range: span(ctx.state.doc, goal.from, goal.to),
+  });
+
+  await ctx.executeCommand(cmd, {
+    GiveAction: ({ giveResult: result }) => {
+      giveResult ??= result;
+    },
+    // The End sentinel carries the final commit, like load and give: a
+    // failure (the skeleton put it in the session) or a missing GiveAction
+    // leaves the document untouched — nothing to clean up.
+    End: () => {
+      if (getSession(ctx.state).error !== undefined) return;
+      if (!giveResult) return;
+      ctx.dispatch(giveReplacementTransaction(ctx.state, goal, payload, giveResult));
+      reload = executeLoad(ctx);
+    },
+  });
+  await reload;
+}

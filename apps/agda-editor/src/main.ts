@@ -38,6 +38,36 @@ import { clampVimCursor } from './ui/vim-cursor';
 
 const FILE_PATH = `${DEFAULT_ALS_WORKSPACE}/Main.agda`;
 
+// The starter document: a tiny self-contained module (stdlib-free — only
+// the wasm backend's installed builtins), a theorem that really checks
+// (`refl` computes 2 + 2), and an open goal inviting the load / give /
+// refine / case interactions. Probe-verified against ALS 2.8.
+const STARTER_DOC = `-- agda-editor starter: load it (Ctrl+C Ctrl+L), then put the
+-- cursor inside the goal and try give (Ctrl+C Ctrl+Space) or
+-- refine (Ctrl+C Ctrl+R).
+
+module Main where
+
+data Nat : Set where
+  zero : Nat
+  suc  : Nat → Nat
+
+_+_ : Nat → Nat → Nat
+zero  + m = m
+suc n + m = suc (n + m)
+
+open import Agda.Builtin.Equality
+
+-- Computations check by refl: 2 + 2 really is 4.
+two-plus-two : suc (suc zero) + suc (suc zero) ≡ suc (suc (suc (suc zero)))
+two-plus-two = refl
+
+-- Your turn: fill in the goal below (the answer is \`n + n\`),
+-- then load again.
+double : Nat → Nat
+double n = {!   !}
+`;
+
 // Assembled after the async backend boot; until then the commands are inert.
 let backend: Backend | undefined;
 let ctx: ExecuteContext | undefined;
@@ -225,6 +255,7 @@ wireGlobalKeys(window, {
 
 view = new EditorView({
   state: EditorState.create({
+    // doc: STARTER_DOC,
     doc: '',
     extensions: [
       // Before basicSetup, so the bare Mod-C chord root wins over the

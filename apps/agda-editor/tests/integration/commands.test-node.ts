@@ -33,6 +33,7 @@ import {
   executeCase,
   executeGive,
   executeLoad,
+  executeRefine,
   responseDispatcher,
 } from '../../src/integration/commands';
 import { posAt, span } from '../../src/integration/coords';
@@ -716,6 +717,127 @@ describe('executeCase', () => {
     expect(stream).toHaveBeenCalledTimes(1);
     expect(view.state.doc.toString()).toBe('a = {! n !}');
     expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 11 }]);
+    expect(getSession(view.state).error).toBeUndefined();
+  });
+});
+
+describe('executeRefine', () => {
+  it('applies the reified term, then chains a load that re-syncs the goals', async () => {
+    // The fake stream re-yields the same responses for both commands: the
+    // refine command consumes only the GiveAction (its echoed interaction
+    // point is bogus — refine's appended `?`s are not in the vfs yet), the
+    // chained load the goal payload behind it.
+    const doc = 'a = {! !}\nb = {! !}';
+    const { view, ctx, syncToVfs, stream } = makeContext(
+      doc,
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { str: 'suc ?' } },
+        // Post-refinement document: 'a = suc ?\nb = {! !}' → fresh ? at
+        // [8,9), survivor hole at [14,19).
+        ...loadResponses([point(0, 8, 9), point(1, 14, 19)]),
+      ],
+      [
+        { id: 0, from: 4, to: 9 },
+        { id: 1, from: 14, to: 19 },
+      ],
+    );
+
+    await executeRefine(ctx, 0, 'suc');
+
+    expect(syncToVfs).toHaveBeenCalledTimes(2);
+    expect(syncToVfs).toHaveBeenNthCalledWith(1, FILE_PATH, doc);
+    expect(syncToVfs).toHaveBeenNthCalledWith(2, FILE_PATH, 'a = suc ?\nb = {! !}');
+    expect(stream).toHaveBeenCalledTimes(2);
+    const refineCmd = stream.mock.calls[0][0] as IOTCMCommand;
+    expect(refineCmd.raw).toContain('Cmd_refine_or_intro False 0');
+    expect(refineCmd.raw).toContain('"suc"');
+    expect((stream.mock.calls[1][0] as IOTCMCommand).raw).toContain('Cmd_load');
+    // The chained load expanded the clause's bare `?` into a hole and
+    // renumbered the goals.
+    expect(view.state.doc.toString()).toBe('a = suc {!   !}\nb = {! !}');
+    expect(getGoals(view.state)).toEqual([
+      { id: 0, from: 8, to: 15, typeString: 'Nat' },
+      { id: 1, from: 20, to: 25, typeString: 'Nat' },
+    ]);
+    const session = getSession(view.state);
+    expect(session.busy).toBe(false);
+    expect(session.error).toBeUndefined();
+  });
+
+  it('sends the intro form for an empty interior, then chains the load', async () => {
+    const { view, ctx, stream } = makeContext(
+      'id = {! !}',
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 5, 10), giveResult: { str: 'λ x → ?' } },
+        // Post-intro document: 'id = λ x → ?' → fresh ? at [11,12).
+        ...loadResponses([point(0, 11, 12)]),
+      ],
+      [{ id: 0, from: 5, to: 10 }],
+    );
+
+    await executeRefine(ctx, 0, '');
+
+    const introCmd = stream.mock.calls[0][0] as IOTCMCommand;
+    expect(introCmd.raw).toContain('Cmd_refine_or_intro False 0');
+    expect(introCmd.raw).toContain('""');
+    expect(view.state.doc.toString()).toBe('id = λ x → {!   !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 11, to: 18, typeString: 'Nat' }]);
+  });
+
+  it('keeps the interior (stripped braces) when agda answers paren:false', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! !}',
+      [
+        { kind: 'GiveAction', interactionPoint: point(0, 4, 9), giveResult: { paren: false } },
+        // Post-replacement document: 'a = zero' — no goals left.
+        ...loadResponses([]),
+      ],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeRefine(ctx, 0, 'zero');
+
+    expect(stream).toHaveBeenCalledTimes(2);
+    expect(view.state.doc.toString()).toBe('a = zero');
+    expect(getGoals(view.state)).toEqual([]);
+  });
+
+  it('does not touch the backend when the goal id is unknown', async () => {
+    const { ctx, syncToVfs, stream } = makeContext('a = {! !}', [], [{ id: 0, from: 4, to: 9 }]);
+
+    await expect(executeRefine(ctx, 999, 'x')).rejects.toThrow('999');
+
+    expect(syncToVfs).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('leaves the doc untouched and skips the load when agda reports an error', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! !}',
+      [errorResponse('Not in scope: zzz'), { kind: 'End' }],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeRefine(ctx, 0, 'zzz');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(getSession(view.state).error).toContain('Not in scope');
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
+  });
+
+  it('leaves the doc untouched when the response set has no GiveAction', async () => {
+    const { view, ctx, stream } = makeContext(
+      'a = {! !}',
+      [{ kind: 'End' }],
+      [{ id: 0, from: 4, to: 9 }],
+    );
+
+    await executeRefine(ctx, 0, 'suc');
+
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(view.state.doc.toString()).toBe('a = {! !}');
+    expect(getGoals(view.state)).toEqual([{ id: 0, from: 4, to: 9 }]);
     expect(getSession(view.state).error).toBeUndefined();
   });
 });

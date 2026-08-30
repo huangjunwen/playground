@@ -417,6 +417,7 @@ body {
 }
 
 #editor {
+  position: relative; /* hosts the toast overlay */
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -900,6 +901,33 @@ body.dock-hidden #dock-resize {
 #editor .tok-invalid {
   color: var(--status-error);
   text-decoration: underline wavy var(--status-error);
+}
+
+/* --- toast (transient warnings, echoed over the editor) --- */
+
+#toast {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  font-size: 0.85em;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+  pointer-events: none;
+  z-index: 30;
+}
+
+#toast.show {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* --- command palette --- */

@@ -32,21 +32,21 @@ describe('goalUnderCursor', () => {
     expect(goalUnderCursor(state)?.id).toBe(0);
   });
 
-  it('falls back to the first visible goal when the cursor is outside', () => {
+  it('returns undefined when the cursor is outside every goal', () => {
     const goals = [
       { id: 0, from: 4, to: 11 },
       { id: 1, from: 16, to: 23 },
     ];
     const state = makeState('a = {! x !}\nb = {! y !}\n', goals, 0);
-    expect(goalUnderCursor(state)?.id).toBe(0);
+    expect(goalUnderCursor(state)).toBeUndefined();
   });
 
-  it('never falls back to a deleted hole', () => {
+  it('never matches a deleted hole (goalAt is [from, to))', () => {
     const goals = [
-      { id: 0, from: 4, to: 4 }, // deleted
-      { id: 1, from: 16, to: 23 },
+      { id: 0, from: 2, to: 2 }, // deleted
+      { id: 1, from: 6, to: 13 },
     ];
-    const state = makeState('a\nb = {! y !}\n', goals, 0);
+    const state = makeState('a\nb = {! y !}\n', goals, 9);
     expect(goalUnderCursor(state)?.id).toBe(1);
   });
 });

@@ -16,19 +16,22 @@ import {
   executeCase,
   executeGive,
   executeLoad,
+  executeRefine,
 } from '../integration/commands';
 import { type GoalRecord, getGoals, goalAt, HOLE_BOUNDARY } from '../model/goal-model';
 import { appendEventTransaction } from '../model/observability-model';
+import { showToast } from './toast';
 
 /** Ctx accessor: undefined until the backend finished booting. */
 export type CtxAccessor = () => ExecuteContext | undefined;
 
-/** The goal a give targets: the cursor's hole, falling back to the first visible one. */
+/**
+ * The goal a give/case/refine targets: the cursor's hole, and nothing
+ * else — acting on a goal the cursor never touched would surprise the
+ * user (undefined ⇒ the caller warns and consumes the key).
+ */
 export function goalUnderCursor(state: EditorState): GoalRecord | undefined {
-  const head = state.selection.main.head;
-  const at = goalAt(state, head);
-  if (at !== undefined) return at; // goalAt matches [from, to), so never a deleted hole
-  return getGoals(state).find(g => g.to > g.from);
+  return goalAt(state, state.selection.main.head); // matches [from, to), so never a deleted hole
 }
 
 /** The payload a give sends for `goal`: its interior text, trimmed. */
@@ -187,20 +190,26 @@ export function loadCommand(getCtx: CtxAccessor): Command {
 }
 
 /**
- * Give the goal under the cursor (falling back to the first visible one)
- * its own interior text — the emacs interaction, no prompt. Empty
- * interior consumes the key and says why via the observability log.
+ * Give the goal under the cursor its own interior text — the emacs
+ * interaction, no prompt. No goal under the cursor, or an empty interior,
+ * consumes the key and says why via the observability log.
  */
 export function giveFromCursorCommand(getCtx: CtxAccessor): Command {
   return view => {
     const ctx = getCtx();
     if (ctx === undefined) return false;
     const goal = goalUnderCursor(view.state);
-    const payload = goal === undefined ? '' : interiorOf(view.state, goal);
-    if (goal === undefined || payload === '') {
-      view.dispatch(
-        appendEventTransaction('warn', 'ui', { note: 'give: no expression under cursor' }),
-      );
+    if (goal === undefined) {
+      const note = 'give: no goal under cursor';
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note);
+      return true;
+    }
+    const payload = interiorOf(view.state, goal);
+    if (payload === '') {
+      const note = 'give: no expression under cursor';
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note);
       return true;
     }
     void executeGive(ctx, goal.id, payload);
@@ -209,23 +218,51 @@ export function giveFromCursorCommand(getCtx: CtxAccessor): Command {
 }
 
 /**
- * Split the goal under the cursor (falling back to the first visible
- * one) on its own interior text — the emacs interaction, no prompt.
- * Empty interior consumes the key and says why via the observability log.
+ * Split the goal under the cursor on its own interior text — the emacs
+ * interaction, no prompt. No goal under the cursor, or an empty interior,
+ * consumes the key and says why via the observability log.
  */
 export function caseFromCursorCommand(getCtx: CtxAccessor): Command {
   return view => {
     const ctx = getCtx();
     if (ctx === undefined) return false;
     const goal = goalUnderCursor(view.state);
-    const payload = goal === undefined ? '' : interiorOf(view.state, goal);
-    if (goal === undefined || payload === '') {
-      view.dispatch(
-        appendEventTransaction('warn', 'ui', { note: 'case: no variable under cursor' }),
-      );
+    if (goal === undefined) {
+      const note = 'case: no goal under cursor';
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note);
+      return true;
+    }
+    const payload = interiorOf(view.state, goal);
+    if (payload === '') {
+      const note = 'case: no variable under cursor';
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note);
       return true;
     }
     void executeCase(ctx, goal.id, payload);
+    return true;
+  };
+}
+
+/**
+ * Refine the goal under the cursor with its own interior text — the
+ * emacs interaction, no prompt. Unlike give, an empty interior is
+ * meaningful (it becomes an intro, `λ`-abstracting the goal); only a
+ * missing goal consumes the key with a log note.
+ */
+export function refineFromCursorCommand(getCtx: CtxAccessor): Command {
+  return view => {
+    const ctx = getCtx();
+    if (ctx === undefined) return false;
+    const goal = goalUnderCursor(view.state);
+    if (goal === undefined) {
+      const note = 'refine: no goal under cursor';
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note);
+      return true;
+    }
+    void executeRefine(ctx, goal.id, interiorOf(view.state, goal));
     return true;
   };
 }

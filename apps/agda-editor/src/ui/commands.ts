@@ -29,7 +29,9 @@ import {
   loadCommand,
   nextGoalCommand,
   prevGoalCommand,
+  refineFromCursorCommand,
 } from './goal-keymap';
+import { showToast } from './toast';
 
 export type CommandCategory = 'Agda' | 'File' | 'View' | 'Help';
 
@@ -83,7 +85,10 @@ export const agdaChordRoot = `${modKey}+C`;
 function guarded(note: string, run: (view: EditorView) => boolean): (view: EditorView) => boolean {
   return view => {
     const ok = run(view);
-    if (!ok) view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+    if (!ok) {
+      view.dispatch(appendEventTransaction('warn', 'ui', { note }));
+      showToast(note); // the dock may be closed — echo it over the editor
+    }
     return true;
   };
 }
@@ -109,6 +114,14 @@ export function buildCommands(env: CommandEnv): AppCommand[] {
       keybinding: `${agdaChordRoot} ${modKey}+Space`,
       enabled: backendOnline,
       run: view => guarded('give: backend offline', giveFromCursorCommand(env.getCtx))(view),
+    },
+    {
+      id: 'agda.refine',
+      title: 'Refine (fill the goal under the cursor and open new subgoals)',
+      category: 'Agda',
+      keybinding: `${agdaChordRoot} ${modKey}+R`,
+      enabled: backendOnline,
+      run: view => guarded('refine: backend offline', refineFromCursorCommand(env.getCtx))(view),
     },
     {
       id: 'agda.case',
