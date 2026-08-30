@@ -1,6 +1,36 @@
 # Playground
 
-A web app playground, built as a purely static site (all in-site links are relative — not tied to any deployment domain).
+My web app playground: small apps that run entirely in the browser — no local installation, no server — plus the shared packages they are built on. Everything is deployed as a purely static site: <https://huangjunwen.github.io/playground/>.
+
+## What's here
+
+### App
+
+- **[agda-editor](apps/agda-editor/)** — an interactive [Agda](https://agda.readthedocs.io/) proof editor that runs entirely in the browser. It ships a WebAssembly build of the [Agda Language Server](https://github.com/agda/agda-language-server) running in a Web Worker: type-check the file, jump between goals, give expressions, case-split on variables — no local Agda installation needed. Installable as a PWA for offline use. ([documentation](apps/agda-editor/docs/index.md))
+
+### Packages
+
+Shared packages consumed by the app above (exported as TypeScript source, no build artifacts):
+
+| Package | What it does |
+| --- | --- |
+| [`language-backend-agda`](packages/language-backend-agda/) | Starts ALS on any run environment and adapts its private `agda` LSP channel into a typed command/response API |
+| [`run-env`](packages/run-env/) | A unified run environment interface: web WASI, Node WASI, and native binaries |
+| [`wasip1`](packages/wasip1/) | A hand-rolled WASI Preview 1 runtime: main-thread host + Web Worker over RPC, with JSPI for blocking calls |
+| [`lsp`](packages/lsp/) | A zero-dependency, transport-agnostic LSP client |
+| [`vendor-assets`](packages/vendor-assets/) | A declarative registry and provisioning pipeline for vendored binaries, with runtime resolution to web URLs or Node paths |
+
+## Screenshots
+
+agda-editor — editing with a loaded goal (light theme), right after a case split (dark theme), and the command palette:
+
+![agda-editor with a loaded file and one goal](docs/screenshot-editor-light.png)
+
+![agda-editor right after a case split, dark theme](docs/screenshot-case-dark.png)
+
+![the command palette](docs/screenshot-palette.png)
+
+---
 
 ## Layout
 
